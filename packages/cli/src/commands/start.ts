@@ -320,7 +320,7 @@ function ghInstallAttempts(): InstallAttempt[] {
       { cmd: "sudo", args: ["dnf", "install", "-y", "gh"], label: "sudo dnf install -y gh" },
     ];
   }
-  if (process.platform === "win32") {
+  if (isWindows()) {
     return [
       {
         cmd: "winget",
@@ -1625,7 +1625,7 @@ function isLocalPath(arg: string): boolean {
  * the parent process — the user explicitly asked us to stop AO.
  */
 async function sweepWindowsPtyHostsBeforeParentKill(): Promise<void> {
-  if (process.platform !== "win32") return;
+  if (!isWindows()) return;
   try {
     const mod = (await import("@aoagents/ao-plugin-runtime-process")) as {
       sweepWindowsPtyHosts?: () => Promise<{

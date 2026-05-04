@@ -10,7 +10,7 @@ import { WebSocketServer, WebSocket } from "ws";
 import { spawn } from "node:child_process";
 import { type Socket, connect as netConnect } from "node:net";
 import { findTmux, resolveTmuxSession, resolvePipePath, validateSessionId } from "./tmux-utils.js";
-import { getEnvDefaults } from "@aoagents/ao-core";
+import { getEnvDefaults, isWindows } from "@aoagents/ao-core";
 
 // These types mirror src/lib/mux-protocol.ts exactly.
 // tsconfig.server.json constrains rootDir to "server/", so we cannot import
@@ -503,6 +503,7 @@ export function handleWindowsPipeMessage(
       pipeSocket.on("error", (err) => {
         winPipes.delete(pipeKey);
         winPipeBuffers.delete(pipeKey);
+        pipeSocket.destroy();
         if (ws.readyState === WS_OPEN) {
           ws.send(
             JSON.stringify({
@@ -604,14 +605,14 @@ export function handleWindowsPipeMessage(
 export function createMuxWebSocket(tmuxPath?: string | null): WebSocketServer | null {
   // On Windows, we use named pipe relay instead of node-pty/tmux.
   // Allow the server to be created without ptySpawn on Windows.
-  if (!ptySpawn && process.platform !== "win32") {
+  if (!ptySpawn && !isWindows()) {
     console.warn("[MuxServer] node-pty not available — mux WebSocket will be disabled");
     return null;
   }
 
   // On Windows, terminal I/O goes through named pipe relay — no TerminalManager needed.
   const terminalManager =
-    ptySpawn && process.platform !== "win32" ? new TerminalManager(tmuxPath ?? undefined) : null;
+    ptySpawn && !isWindows() ? new TerminalManager(tmuxPath ?? undefined) : null;
 
   const nextPort = process.env.PORT || "3000";
   const broadcaster = new SessionBroadcaster(nextPort);
@@ -669,7 +670,7 @@ export function createMuxWebSocket(tmuxPath?: string | null): WebSocketServer | 
 
           try {
             if (type === "open") {
-              if (process.platform === "win32") {
+              if (isWindows()) {
                 handleWindowsPipeMessage(
                   msg as { id: string; type: string; projectId?: string; data?: string; cols?: number; rows?: number },
                   ws,
@@ -739,7 +740,7 @@ export function createMuxWebSocket(tmuxPath?: string | null): WebSocketServer | 
                 }
               }
             } else if (type === "data" && "data" in msg) {
-              if (process.platform === "win32") {
+              if (isWindows()) {
                 handleWindowsPipeMessage(
                   msg as { id: string; type: string; projectId?: string; data: string },
                   ws,
@@ -751,7 +752,7 @@ export function createMuxWebSocket(tmuxPath?: string | null): WebSocketServer | 
                 terminalManager?.write(id, msg.data, projectId);
               }
             } else if (type === "resize" && "cols" in msg && "rows" in msg) {
-              if (process.platform === "win32") {
+              if (isWindows()) {
                 handleWindowsPipeMessage(
                   msg as { id: string; type: string; projectId?: string; cols: number; rows: number },
                   ws,
@@ -763,7 +764,7 @@ export function createMuxWebSocket(tmuxPath?: string | null): WebSocketServer | 
                 terminalManager?.resize(id, msg.cols, msg.rows, projectId);
               }
             } else if (type === "close") {
-              if (process.platform === "win32") {
+              if (isWindows()) {
                 handleWindowsPipeMessage(
                   msg as { id: string; type: string; projectId?: string; data?: string; cols?: number; rows?: number },
                   ws,
@@ -840,7 +841,7 @@ export function createMuxWebSocket(tmuxPath?: string | null): WebSocketServer | 
       subscriptions.clear();
       // Windows: close all open pipe sockets
       for (const pipeSocket of winPipes.values()) {
-        pipeSocket.end();
+        pipeSocket.destroy();
       }
       winPipes.clear();
       winPipeBuffers.clear();

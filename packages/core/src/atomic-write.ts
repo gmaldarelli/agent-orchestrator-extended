@@ -1,11 +1,11 @@
 import { renameSync, writeFileSync, unlinkSync } from "node:fs";
+import { isWindows } from "./platform.js";
 
 // Windows file-locking workaround. `renameSync` can fail with EPERM/EACCES when
 // antivirus, the Windows indexer, or another process briefly holds a handle on
 // the destination path. The failures are transient — a short retry loop is the
 // standard fix (same pattern Node's own `fs.rm` uses internally).
-const IS_WINDOWS = process.platform === "win32";
-const RENAME_RETRIES = IS_WINDOWS ? 10 : 0;
+const RENAME_RETRIES = isWindows() ? 10 : 0;
 const RENAME_RETRY_DELAY_MS = 50;
 
 function renameWithRetry(src: string, dest: string): void {

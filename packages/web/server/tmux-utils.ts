@@ -9,6 +9,7 @@ import { execFileSync } from "node:child_process";
 import { readdirSync, existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { isWindows } from "@aoagents/ao-core";
 
 /** Session ID validation regex — alphanumeric, hyphens, underscores only */
 export const SESSION_ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
@@ -110,7 +111,7 @@ export function validateSessionId(sessionId: string): boolean {
 export function findTmux(
   execFn: typeof execFileSync = execFileSync,
 ): string | null {
-  if (process.platform === "win32") return null;
+  if (isWindows()) return null;
   const candidates = [
     "/opt/homebrew/bin/tmux", // macOS ARM (Homebrew)
     "/usr/local/bin/tmux", // macOS Intel (Homebrew)
@@ -233,7 +234,7 @@ export function resolvePipePath(
     readFile?: (path: string) => string;
   } = defaultFs,
 ): string | null {
-  if (process.platform !== "win32") return null;
+  if (!isWindows()) return null;
 
   const readFile = fs.readFile ?? ((p: string) => readFileSync(p, "utf8"));
   const aoBase = join(fs.homedir(), ".agent-orchestrator");
