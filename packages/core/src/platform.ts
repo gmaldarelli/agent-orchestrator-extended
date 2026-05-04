@@ -16,6 +16,10 @@ export function isWindows(): boolean {
   return process.platform === "win32";
 }
 
+export function isMac(): boolean {
+  return process.platform === "darwin";
+}
+
 export function getDefaultRuntime(): "tmux" | "process" {
   return isWindows() ? "process" : "tmux";
 }

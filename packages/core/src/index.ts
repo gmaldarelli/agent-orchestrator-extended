@@ -273,6 +273,7 @@ export {
 // Platform adapter — centralized cross-platform branching
 export {
   isWindows,
+  isMac,
   getDefaultRuntime,
   getShell,
   killProcessTree,
