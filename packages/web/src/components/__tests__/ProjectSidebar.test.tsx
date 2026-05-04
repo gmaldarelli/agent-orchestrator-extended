@@ -83,6 +83,28 @@ describe("ProjectSidebar", () => {
     expect(screen.getByRole("button", { name: /switch to (dark|light) mode/i })).toBeInTheDocument();
   });
 
+  it("renders a collapsed empty rail when collapsed with no projects", () => {
+    const { container } = render(
+      <ProjectSidebar
+        projects={[]}
+        sessions={[]}
+        activeProjectId={undefined}
+        activeSessionId={undefined}
+        collapsed
+      />,
+    );
+
+    expect(container.querySelector(".project-sidebar--collapsed")).not.toBeNull();
+    // Header label, empty-state copy, and footer are hidden in the collapsed rail
+    expect(screen.queryByText("Projects")).not.toBeInTheDocument();
+    expect(screen.queryByText(/no projects yet/i)).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /switch to (dark|light) mode/i }),
+    ).not.toBeInTheDocument();
+    // The + button is still reachable so users can add a project from the rail
+    expect(screen.getByRole("button", { name: /new project/i })).toBeInTheDocument();
+  });
+
   it("renders the compact sidebar header and project rows", () => {
     render(
       <ProjectSidebar

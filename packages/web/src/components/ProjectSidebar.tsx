@@ -82,13 +82,38 @@ const LEVEL_LABELS: Record<AttentionLevel, string> = {
 
 export function ProjectSidebar(props: ProjectSidebarProps) {
   if (props.projects.length === 0) {
-    return <ProjectSidebarEmpty />;
+    return <ProjectSidebarEmpty collapsed={props.collapsed} />;
   }
   return <ProjectSidebarInner {...props} />;
 }
 
-function ProjectSidebarEmpty() {
+function ProjectSidebarEmpty({ collapsed = false }: { collapsed?: boolean }) {
   const [addProjectOpen, setAddProjectOpen] = useState(false);
+
+  if (collapsed) {
+    return (
+      <aside className="project-sidebar project-sidebar--collapsed flex h-full flex-col items-center gap-1 py-2">
+        <button
+          type="button"
+          className="project-sidebar__add-btn"
+          aria-label="New project"
+          onClick={() => setAddProjectOpen(true)}
+        >
+          <svg
+            aria-hidden="true"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            viewBox="0 0 24 24"
+          >
+            <path d="M12 5v14M5 12h14" />
+          </svg>
+        </button>
+        <AddProjectModal open={addProjectOpen} onClose={() => setAddProjectOpen(false)} />
+      </aside>
+    );
+  }
+
   return (
     <aside className="project-sidebar flex h-full flex-col">
       <div className="project-sidebar__compact-hdr">
