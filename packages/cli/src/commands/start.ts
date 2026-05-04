@@ -10,7 +10,7 @@
  */
 
 import { spawn, type ChildProcess } from "node:child_process";
-import { existsSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve, basename, dirname } from "node:path";
 import { cwd } from "node:process";
 import chalk from "chalk";
@@ -98,6 +98,7 @@ import {
 import { ensureGit, runtimePreflight } from "../lib/startup-preflight.js";
 import { installShutdownHandlers } from "../lib/shutdown.js";
 import { resolveOrCreateProject } from "../lib/resolve-project.js";
+import { pathsEqual } from "../lib/path-equality.js";
 
 import { DEFAULT_PORT } from "../lib/constants.js";
 import { projectSessionUrl } from "../lib/routes.js";
@@ -203,10 +204,7 @@ async function resolveProject(
     const currentDirResolved = resolve(cwd());
     const cwdAlreadyInConfig = projectIds.some((id) => {
       try {
-        return (
-          resolve(config.projects[id].path.replace(/^~/, process.env["HOME"] || "")) ===
-          currentDirResolved
-        );
+        return pathsEqual(config.projects[id].path, currentDirResolved);
       } catch {
         return false;
       }
@@ -620,14 +618,12 @@ async function addProjectToConfig(
   const resolvedPath = resolve(projectPath.replace(/^~/, process.env["HOME"] || ""));
 
   // Check if this path is already registered under any project name.
-  // Use realpathSync for canonical comparison (resolves symlinks, case variants).
+  // pathsEqual canonicalizes via realpathSync and lowercases on Windows so
+  // drive-letter case and 8.3-vs-long-name differences don't cause a miss.
   // Done before ensureGit so already-registered paths return early without requiring git.
-  const canonicalPath = realpathSync(resolvedPath);
   const existingByPath = Object.entries(config.projects).find(([, p]) => {
     try {
-      return (
-        realpathSync(resolve(p.path.replace(/^~/, process.env["HOME"] || ""))) === canonicalPath
-      );
+      return pathsEqual(p.path, resolvedPath);
     } catch {
       return false;
     }
@@ -965,7 +961,9 @@ async function runStartup(
         const currentProjectSessions = lastStop.projectId === projectId ? lastStop.sessionIds : [];
         if (currentProjectSessions.length > 0) {
           console.log(
-            chalk.yellow(`\n  ${currentProjectSessions.length} session(s) were active before last ao stop (${stoppedAgo}):`),
+            chalk.yellow(
+              `\n  ${currentProjectSessions.length} session(s) were active before last ao stop (${stoppedAgo}):`,
+            ),
           );
           console.log(chalk.dim(`  ${currentProjectSessions.join(", ")}\n`));
         }
@@ -1013,9 +1011,13 @@ async function runStartup(
               }
             }
             if (restoredCount === allRestoreSessions.length) {
-              restoreSpinner.succeed(`Restored ${restoredCount}/${allRestoreSessions.length} session(s)`);
+              restoreSpinner.succeed(
+                `Restored ${restoredCount}/${allRestoreSessions.length} session(s)`,
+              );
             } else {
-              restoreSpinner.warn(`Restored ${restoredCount}/${allRestoreSessions.length} session(s)`);
+              restoreSpinner.warn(
+                `Restored ${restoredCount}/${allRestoreSessions.length} session(s)`,
+              );
             }
             for (const w of warnings) {
               console.log(chalk.yellow(w));
@@ -1027,9 +1029,7 @@ async function runStartup(
             // and the remaining sessions would never be retryable. When
             // every session restored (or was skipped), clear the file.
             if (failedSessionIds.size > 0) {
-              const remainingTarget = lastStop.sessionIds.filter((id) =>
-                failedSessionIds.has(id),
-              );
+              const remainingTarget = lastStop.sessionIds.filter((id) => failedSessionIds.has(id));
               const remainingOther = otherProjects
                 .map((p) => ({
                   projectId: p.projectId,
@@ -1258,9 +1258,7 @@ async function attachAndSpawnOrchestrator(opts: {
     console.log(chalk.dim(`  Dashboard config reloaded.`));
   } else {
     console.log(
-      chalk.yellow(
-        `  ⚠ ${notifyResult.reason}. Refresh the page if the project doesn't show up.`,
-      ),
+      chalk.yellow(`  ⚠ ${notifyResult.reason}. Refresh the page if the project doesn't show up.`),
     );
   }
 
@@ -1324,8 +1322,7 @@ export function registerStart(program: Command): void {
           // ── Already-running detection (before any config mutation) ──
           let running = await isAlreadyRunning();
           let startNewOrchestrator = false;
-          const isProjectId =
-            projectArg && !isRepoUrl(projectArg) && !isLocalPath(projectArg);
+          const isProjectId = projectArg && !isRepoUrl(projectArg) && !isLocalPath(projectArg);
           const projectArgIsUrlOrPath =
             !!projectArg && (isRepoUrl(projectArg) || isLocalPath(projectArg));
 
@@ -1361,10 +1358,7 @@ export function registerStart(program: Command): void {
                 try {
                   const loadedCfg = loadConfig();
                   const proj = loadedCfg.projects[p];
-                  return (
-                    proj &&
-                    resolve(proj.path.replace(/^~/, process.env["HOME"] || "")) === cwdResolved
-                  );
+                  return proj !== undefined && pathsEqual(proj.path, cwdResolved);
                 } catch {
                   return false;
                 }
@@ -1748,7 +1742,9 @@ export function registerStop(program: Command): void {
             if (killedSessionIds.length === 0) {
               spinner.fail("Failed to stop any sessions");
             } else if (killedSessionIds.length < activeSessions.length) {
-              spinner.warn(`Stopped ${killedSessionIds.length}/${activeSessions.length} session(s)`);
+              spinner.warn(
+                `Stopped ${killedSessionIds.length}/${activeSessions.length} session(s)`,
+              );
             } else {
               spinner.succeed(`Stopped ${killedSessionIds.length} session(s)`);
             }
@@ -1785,9 +1781,7 @@ export function registerStop(program: Command): void {
             await writeLastStop({
               stoppedAt: new Date().toISOString(),
               projectId: _projectId,
-              sessionIds: killedSessionIds.filter((id) =>
-                targetActive.some((s) => s.id === id),
-              ),
+              sessionIds: killedSessionIds.filter((id) => targetActive.some((s) => s.id === id)),
               otherProjects: otherProjects.length > 0 ? otherProjects : undefined,
             });
           }

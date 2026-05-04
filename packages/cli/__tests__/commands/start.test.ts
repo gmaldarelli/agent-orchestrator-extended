@@ -333,7 +333,11 @@ beforeEach(async () => {
   vi.mocked(webDir.findFreePort).mockResolvedValue(3000);
   vi.mocked(webDir.buildDashboardEnv).mockResolvedValue({});
   const projectDetection = await import("../../src/lib/project-detection.js");
-  vi.mocked(projectDetection.detectProjectType).mockReturnValue({ languages: [], frameworks: [], tools: [] });
+  vi.mocked(projectDetection.detectProjectType).mockReturnValue({
+    languages: [],
+    frameworks: [],
+    tools: [],
+  });
   vi.mocked(projectDetection.generateRulesFromTemplates).mockReturnValue(null);
   vi.mocked(projectDetection.formatProjectTypeForDisplay).mockReturnValue("");
 
@@ -434,7 +438,10 @@ function makeConfig(projects: Record<string, Record<string, unknown>>): Record<s
     configPath: join(tmpDir, "agent-orchestrator.yaml"),
     port: 3000,
     defaults: {
-      runtime: "tmux",
+      // Use "process" so the test runs on every platform without
+      // tripping ensureTmux. Tests that exercise the tmux preflight
+      // path set runtime explicitly.
+      runtime: "process",
       agent: "claude-code",
       workspace: "worktree",
       notifiers: [],
@@ -656,17 +663,13 @@ describe("start command — URL argument", () => {
     mockExecSilent.mockResolvedValue("Logged in");
 
     mockSpawn.mockImplementation(
-      (
-        cmd: string,
-        args: string[],
-        _opts?: { cwd?: string; env?: NodeJS.ProcessEnv },
-      ) => {
-      if (cmd === "gh" && args[0] === "repo" && args[1] === "clone") {
-        createFakeRepo(repoDir, "https://github.com/owner/my-app.git", {
-          "Cargo.toml": "",
-        });
-      }
-      return createSpawnChild({ closeCode: 0 });
+      (cmd: string, args: string[], _opts?: { cwd?: string; env?: NodeJS.ProcessEnv }) => {
+        if (cmd === "gh" && args[0] === "repo" && args[1] === "clone") {
+          createFakeRepo(repoDir, "https://github.com/owner/my-app.git", {
+            "Cargo.toml": "",
+          });
+        }
+        return createSpawnChild({ closeCode: 0 });
       },
     );
 
@@ -705,25 +708,21 @@ describe("start command — URL argument", () => {
     });
 
     mockSpawn.mockImplementation(
-      (
-        cmd: string,
-        args: string[],
-        _opts?: { cwd?: string; env?: NodeJS.ProcessEnv },
-      ) => {
-      if (cmd === "git" && args[0] === "clone") {
-        const url = String(args[3] ?? "");
-        // SSH attempt fails (simulate non-zero exit)
-        if (url.startsWith("git@")) {
-          return createSpawnChild({ closeCode: 1 });
+      (cmd: string, args: string[], _opts?: { cwd?: string; env?: NodeJS.ProcessEnv }) => {
+        if (cmd === "git" && args[0] === "clone") {
+          const url = String(args[3] ?? "");
+          // SSH attempt fails (simulate non-zero exit)
+          if (url.startsWith("git@")) {
+            return createSpawnChild({ closeCode: 1 });
+          }
+
+          // HTTPS fallback succeeds
+          createFakeRepo(repoDir, "https://github.com/owner/my-app.git", {
+            "Cargo.toml": "",
+          });
         }
 
-        // HTTPS fallback succeeds
-        createFakeRepo(repoDir, "https://github.com/owner/my-app.git", {
-          "Cargo.toml": "",
-        });
-      }
-
-      return createSpawnChild({ closeCode: 0 });
+        return createSpawnChild({ closeCode: 0 });
       },
     );
 
@@ -765,7 +764,7 @@ describe("start command — URL argument", () => {
       [
         "port: 4000",
         "defaults:",
-        "  runtime: tmux",
+        "  runtime: process",
         "  agent: claude-code",
         "  workspace: worktree",
         "  notifiers: [desktop]",
@@ -806,7 +805,7 @@ describe("start command — URL argument", () => {
       [
         "port: 4000",
         "defaults:",
-        "  runtime: tmux",
+        "  runtime: process",
         "  agent: claude-code",
         "  workspace: worktree",
         "  notifiers: [desktop]",
@@ -882,7 +881,20 @@ describe("start command — non-interactive install safety", () => {
   it("does not auto-install tmux when missing in non-interactive mode", async () => {
     mockIsHumanCaller.mockReturnValue(false);
 
-    mockConfigRef.current = makeConfig({ "my-app": makeProject() });
+    // This test exercises the tmux preflight path, so the config must
+    // explicitly select runtime: tmux (makeConfig defaults to process).
+    // Pin the platform to linux so the Windows branch (which exits before
+    // calling execSilent) doesn't short-circuit the tmux -V check we're
+    // asserting on.
+    const tmuxConfig = makeConfig({ "my-app": makeProject() }) as {
+      defaults: Record<string, unknown>;
+    };
+    tmuxConfig.defaults.runtime = "tmux";
+    mockConfigRef.current = tmuxConfig;
+
+    const originalPlatform = Object.getOwnPropertyDescriptor(process, "platform");
+    Object.defineProperty(process, "platform", { value: "linux", configurable: true });
+
     mockExecSilent.mockImplementation(async (cmd: string, args: string[] = []) => {
       if (cmd === "git" && args[0] === "--version") return "git version 2.43.0";
       if (cmd === "tmux" && args[0] === "-V") return null;
@@ -891,9 +903,15 @@ describe("start command — non-interactive install safety", () => {
       return null;
     });
 
-    await expect(
-      program.parseAsync(["node", "test", "start", "--no-dashboard", "--no-orchestrator"]),
-    ).rejects.toThrow("process.exit(1)");
+    try {
+      await expect(
+        program.parseAsync(["node", "test", "start", "--no-dashboard", "--no-orchestrator"]),
+      ).rejects.toThrow("process.exit(1)");
+    } finally {
+      if (originalPlatform) {
+        Object.defineProperty(process, "platform", originalPlatform);
+      }
+    }
 
     expect(hasPrivilegedInstallAttempt()).toBe(false);
     expect(mockExec.mock.calls.some((call) => String(call[0]) === "tmux")).toBe(false);
@@ -1238,10 +1256,10 @@ describe("start command — orchestrator session strategy display", () => {
 
     await program.parseAsync(["node", "test", "start", "--rebuild", "--no-orchestrator"]);
 
-    expect(dashboardRebuild.rebuildDashboardProductionArtifacts).toHaveBeenCalledWith(tmpDir, [
-      3000,
-      3001,
-    ]);
+    expect(dashboardRebuild.rebuildDashboardProductionArtifacts).toHaveBeenCalledWith(
+      tmpDir,
+      [3000, 3001],
+    );
   });
 
   it("opens the most recent orchestrator session page when multiple existing orchestrators found with dashboard enabled and reuse is explicit", async () => {
@@ -1850,7 +1868,8 @@ describe("start command — platform-aware runtime fallback", () => {
 
     // ensureTmux() calls execSilent("tmux", ["-V"]) — it must NOT have been called.
     const tmuxChecks = mockExecSilent.mock.calls.filter(
-      (call) => String(call[0]) === "tmux" && Array.isArray(call[1]) && (call[1] as string[])[0] === "-V",
+      (call) =>
+        String(call[0]) === "tmux" && Array.isArray(call[1]) && (call[1] as string[])[0] === "-V",
     );
     expect(tmuxChecks).toHaveLength(0);
   });
@@ -1886,7 +1905,8 @@ describe("start command — platform-aware runtime fallback", () => {
 
     // ensureTmux() must have checked for tmux availability.
     const tmuxChecks = mockExecSilent.mock.calls.filter(
-      (call) => String(call[0]) === "tmux" && Array.isArray(call[1]) && (call[1] as string[])[0] === "-V",
+      (call) =>
+        String(call[0]) === "tmux" && Array.isArray(call[1]) && (call[1] as string[])[0] === "-V",
     );
     expect(tmuxChecks.length).toBeGreaterThan(0);
   });
@@ -2331,7 +2351,7 @@ describe("start command — already-running detection", () => {
       globalConfigPath,
       yamlStringify(
         {
-          defaults: { runtime: "tmux", agent: "claude-code", workspace: "worktree", notifiers: [] },
+          defaults: { runtime: "process", agent: "claude-code", workspace: "worktree", notifiers: [] },
           projects: {
             "my-app": {
               name: "My App",
@@ -2376,8 +2396,7 @@ describe("start command — already-running detection", () => {
         ) {
           return "https://github.com/org/new-repo.git";
         }
-        if (args[0] === "symbolic-ref" && workingDir === repoDir)
-          return "refs/remotes/origin/main";
+        if (args[0] === "symbolic-ref" && workingDir === repoDir) return "refs/remotes/origin/main";
         if (args[0] === "rev-parse" && args[1] === "--verify" && workingDir === repoDir)
           return "abc";
         return null;
@@ -2480,8 +2499,7 @@ describe("start command — already-running detection", () => {
     });
 
     mockWaitForExit.mockResolvedValue(true);
-
-    const killSpy = vi.spyOn(process, "kill").mockImplementation(() => true);
+    mockKillProcessTree.mockResolvedValue(undefined);
 
     mockPromptSelect.mockResolvedValue("restart");
 
@@ -2495,7 +2513,10 @@ describe("start command — already-running detection", () => {
       // Startup after restart may throw — that's OK for this test
     }
 
-    expect(killSpy).toHaveBeenCalledWith(9999, "SIGTERM");
+    // killExistingDaemon delegates to killProcessTree (taskkill /T /F on Windows,
+    // process group signalling on Unix) instead of raw process.kill, so dead
+    // grandchildren of the daemon don't leak.
+    expect(mockKillProcessTree).toHaveBeenCalledWith(9999, "SIGTERM");
     expect(mockUnregister).toHaveBeenCalled();
 
     const output = vi
@@ -2503,8 +2524,6 @@ describe("start command — already-running detection", () => {
       .mock.calls.map((c) => c.join(" "))
       .join("\n");
     expect(output).toContain("Stopped existing instance");
-
-    killSpy.mockRestore();
   });
 
   it("creates new orchestrator entry when human caller selects 'new'", async () => {
@@ -2524,7 +2543,7 @@ describe("start command — already-running detection", () => {
       configPath,
       yamlStringify(
         {
-          defaults: { runtime: "tmux", agent: "claude-code", workspace: "worktree", notifiers: [] },
+          defaults: { runtime: "process", agent: "claude-code", workspace: "worktree", notifiers: [] },
           projects: {
             "my-app": {
               name: "My App",
@@ -2578,7 +2597,7 @@ describe("start command — already-running detection", () => {
     const { stringify: yamlStringify } = await import("yaml");
     const originalYaml = yamlStringify(
       {
-        defaults: { runtime: "tmux", agent: "claude-code", workspace: "worktree", notifiers: [] },
+        defaults: { runtime: "process", agent: "claude-code", workspace: "worktree", notifiers: [] },
         projects: {
           "my-app": {
             name: "My App",
@@ -2631,7 +2650,7 @@ describe("start command — path-based deduplication in addProjectToConfig", () 
       configPath,
       yamlStringify(
         {
-          defaults: { runtime: "tmux", agent: "claude-code", workspace: "worktree", notifiers: [] },
+          defaults: { runtime: "process", agent: "claude-code", workspace: "worktree", notifiers: [] },
           projects: {
             "my-app": {
               name: "My App",
@@ -2684,7 +2703,7 @@ describe("start command — path-based deduplication in addProjectToConfig", () 
       configPath,
       yamlStringify(
         {
-          defaults: { runtime: "tmux", agent: "claude-code", workspace: "worktree", notifiers: [] },
+          defaults: { runtime: "process", agent: "claude-code", workspace: "worktree", notifiers: [] },
           projects: {
             "old-name": {
               name: "Old Name",
@@ -2744,7 +2763,7 @@ describe("start command — global registry mutations", () => {
       globalConfigPath,
       yamlStringify(
         {
-          defaults: { runtime: "tmux", agent: "claude-code", workspace: "worktree", notifiers: [] },
+          defaults: { runtime: "process", agent: "claude-code", workspace: "worktree", notifiers: [] },
           projects: {
             current: {
               projectId: "current",
@@ -2845,7 +2864,7 @@ describe("start command — global registry mutations", () => {
       globalConfigPath,
       yamlStringify(
         {
-          defaults: { runtime: "tmux", agent: "claude-code", workspace: "worktree", notifiers: [] },
+          defaults: { runtime: "process", agent: "claude-code", workspace: "worktree", notifiers: [] },
           projects: {
             current: {
               projectId: "current",
