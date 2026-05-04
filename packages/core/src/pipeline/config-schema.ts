@@ -12,8 +12,7 @@
 
 import { z } from "zod";
 
-import { asPipelineId } from "./types.js";
-import type { Pipeline, Stage, StageExecutor, TaskMode } from "./types.js";
+import { asPipelineId, type Pipeline, type Stage, type StageExecutor, type TaskMode } from "./types.js";
 
 const TaskModeSchema = z.enum(["review", "code", "answer"]);
 

@@ -16,6 +16,7 @@ const { mockConfigRef, mockStore } = vi.hoisted(() => ({
 }));
 
 vi.mock("@aoagents/ao-core", async (importOriginal) => {
+  // eslint-disable-next-line @typescript-eslint/consistent-type-imports
   const actual = await importOriginal<typeof import("@aoagents/ao-core")>();
   return {
     ...actual,
