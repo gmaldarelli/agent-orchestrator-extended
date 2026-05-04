@@ -192,8 +192,10 @@ describe("toClaudeProjectPath", () => {
     );
   });
 
-  it("strips Windows drive colons and folds backslashes", () => {
-    expect(toClaudeProjectPath("C:\\Users\\dev\\foo")).toBe("C-Users-dev-foo");
+  it("encodes Windows drive colons and backslashes as dashes", () => {
+    // Verified on-disk: Claude Code on Windows produces `C--Users-dev-foo`
+    // (the colon position is a dash, not stripped). See commit 582c5373.
+    expect(toClaudeProjectPath("C:\\Users\\dev\\foo")).toBe("C--Users-dev-foo");
   });
 
   it("collapses any other non-alphanumeric character into a dash", () => {
@@ -587,7 +589,12 @@ describe("getSessionInfo", () => {
         }),
       );
       expect(mockReaddir).toHaveBeenCalledWith(
-        "/mock/home/.claude/projects/-Users-dev--agent-orchestrator-projects-graph-isomorphism-d185b44d56-worktrees-gi-orchestrator",
+        pathJoin(
+          "/mock/home",
+          ".claude",
+          "projects",
+          "-Users-dev--agent-orchestrator-projects-graph-isomorphism-d185b44d56-worktrees-gi-orchestrator",
+        ),
       );
     });
   });

@@ -401,18 +401,19 @@ export const manifest = {
  *
  * Verified against Claude Code's actual on-disk slugs: every non-alphanumeric
  * character (other than `-`) is replaced with `-`. That includes `/`, `.`,
- * and crucially `_` — AO's per-project data dirs are named like
+ * `:`, and crucially `_` — AO's per-project data dirs are named like
  * `<sanitized>_<hash>`, and without underscore folding the slug AO computes
  * misses the directory Claude actually wrote (issue #1611).
  *
- * Windows drive letters keep their special handling: `C:\Users\...` → strip
- * the colon, then encode → `C-Users-...`.
+ * Windows: `C:\Users\dev\project` → `C--Users-dev-project` — Claude leaves the
+ * colon-position as a dash rather than stripping it. Verified via on-disk QA
+ * during the Windows port (commit 582c5373). Stripping the colon (as #1611
+ * inadvertently did) breaks JSONL lookup on Windows.
  *
  * Exported for testing purposes.
  */
 export function toClaudeProjectPath(workspacePath: string): string {
-  // Handle Windows drive letters (C:\Users\... → C-Users-...)
-  const normalized = workspacePath.replace(/\\/g, "/").replace(/:/g, "");
+  const normalized = workspacePath.replace(/\\/g, "/");
   return normalized.replace(/[^a-zA-Z0-9-]/g, "-");
 }
 
