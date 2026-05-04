@@ -525,8 +525,13 @@ export async function sweepWindowsPtyHosts(): Promise<{
       while (Date.now() < deadline) {
         try {
           process.kill(entry.ptyHostPid, 0);
-        } catch {
-          exited = true;
+        } catch (err: unknown) {
+          // EPERM: process exists but we can't signal it (cross-context on
+          // Windows). It is NOT gone — fall through to force-kill. Any other
+          // code (typically ESRCH) means it has already exited.
+          if ((err as { code?: string }).code !== "EPERM") {
+            exited = true;
+          }
           break;
         }
         await new Promise((r) => setTimeout(r, 25));
