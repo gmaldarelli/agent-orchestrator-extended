@@ -163,6 +163,7 @@ describe("parseUnifiedDiff", () => {
       { kind: "context", text: "context" },
       { kind: "del", text: "old" },
       { kind: "add", text: "new" },
+      { kind: "context", text: "" },
     ]);
   });
 
@@ -184,6 +185,7 @@ describe("parseUnifiedDiff", () => {
       { kind: "context", text: "heading" },
       { kind: "del", text: "--" },
       { kind: "add", text: "++added text" },
+      { kind: "context", text: "" },
     ]);
   });
 

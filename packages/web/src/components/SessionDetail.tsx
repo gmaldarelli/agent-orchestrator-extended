@@ -22,7 +22,7 @@ import {
 } from "./SessionDetailHeader";
 import { SessionEndedSummary } from "./SessionEndedSummary";
 import { sessionActivityMeta } from "./session-detail-utils";
-import { CanvasRail } from "./canvas/CanvasRail";
+import { CanvasRail } from "./CanvasRail";
 
 export type { OrchestratorZones } from "./SessionDetailHeader";
 

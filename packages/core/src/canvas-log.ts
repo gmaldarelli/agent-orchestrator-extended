@@ -238,9 +238,22 @@ export function parseUnifiedDiff(diff: string): { files: CanvasDiffFile[]; trunc
         truncated = true;
         break;
       }
-      const match = /^diff --git a\/(.+) b\/(.+)$/.exec(line);
-      const path = match?.[2] ?? "";
-      const oldPath = match?.[1];
+      // Parse "diff --git a/<oldPath> b/<newPath>" without a regex. The naive
+      // regex `/^diff --git a\/(.+) b\/(.+)$/` is polynomial-backtracking on
+      // pathological inputs like "a/a b/a b/a b/a..." (CodeQL js/redos).
+      // lastIndexOf is O(n) and works for the common case where paths don't
+      // contain " b/"; for paths that do, git quotes them anyway.
+      const prefix = "diff --git a/";
+      let path = "";
+      let oldPath: string | undefined;
+      if (line.startsWith(prefix)) {
+        const rest = line.slice(prefix.length);
+        const sep = rest.lastIndexOf(" b/");
+        if (sep >= 0) {
+          oldPath = rest.slice(0, sep);
+          path = rest.slice(sep + 3);
+        }
+      }
       current = {
         path,
         oldPath: oldPath !== path ? oldPath : undefined,
@@ -259,7 +272,19 @@ export function parseUnifiedDiff(diff: string): { files: CanvasDiffFile[]; trunc
       if (currentHunk) current.hunks.push(currentHunk);
       currentHunk = { header: line, lines: [] };
     } else if (currentHunk) {
-      if (line === "") continue;
+      // Bare-empty lines inside a hunk represent a blank context line that some
+      // diff generators emit without the leading space prefix. Treat them as
+      // empty context rather than dropping (which would misalign surrounding
+      // lines in the rendered hunk).
+      if (line === "") {
+        currentHunk.lines.push({ kind: "context", text: "" });
+        totalLines++;
+        if (totalLines >= DIFF_MAX_LINES) {
+          truncated = true;
+          break;
+        }
+        continue;
+      }
       const kind: "add" | "del" | "context" = line.startsWith("+")
         ? "add"
         : line.startsWith("-")

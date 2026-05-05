@@ -11,7 +11,7 @@ const toneClass: Record<NonNullable<Extract<CanvasArtifact, { type: "stats" }>["
   neutral: "text-[var(--color-text-primary)]",
 };
 
-export function StatsCanvas({ canvas }: Props) {
+export function CanvasStats({ canvas }: Props) {
   return (
     <div className="grid grid-cols-2 gap-2">
       {canvas.payload.metrics.map((m, i) => (

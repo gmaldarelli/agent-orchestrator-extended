@@ -4,7 +4,7 @@ import type { CanvasArtifact } from "@aoagents/ao-core";
 
 type Props = { canvas: Extract<CanvasArtifact, { type: "table" }> };
 
-export function TableCanvas({ canvas }: Props) {
+export function CanvasTable({ canvas }: Props) {
   const { columns, rows } = canvas.payload;
   return (
     <div className="overflow-auto">

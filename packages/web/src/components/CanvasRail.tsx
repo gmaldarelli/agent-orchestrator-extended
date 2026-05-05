@@ -3,10 +3,10 @@
 import { useEffect, useState } from "react";
 import type { CanvasArtifact } from "@aoagents/ao-core";
 import { useSessionCanvases } from "@/hooks/useSessionCanvases";
-import { MarkdownCanvas } from "./renderers/MarkdownCanvas";
-import { DiffCanvas } from "./renderers/DiffCanvas";
-import { TableCanvas } from "./renderers/TableCanvas";
-import { StatsCanvas } from "./renderers/StatsCanvas";
+import { CanvasMarkdown } from "./CanvasMarkdown";
+import { CanvasDiff } from "./CanvasDiff";
+import { CanvasTable } from "./CanvasTable";
+import { CanvasStats } from "./CanvasStats";
 
 type Props = { sessionId: string };
 
@@ -30,7 +30,7 @@ export function CanvasRail({ sessionId }: Props) {
 
   if (!isOpen) {
     return (
-      <div className="flex flex-col border-l border-[var(--color-border-subtle)] bg-[var(--color-bg-surface)]">
+      <div className="flex w-6 shrink-0 flex-col border-l border-[var(--color-border-subtle)] bg-[var(--color-bg-surface)]">
         <button
           type="button"
           onClick={() => setOpen(true)}
@@ -96,12 +96,12 @@ function CanvasPanel({ canvas }: { canvas: CanvasArtifact }) {
 function CanvasBody({ canvas }: { canvas: CanvasArtifact }) {
   switch (canvas.type) {
     case "markdown":
-      return <MarkdownCanvas canvas={canvas} />;
+      return <CanvasMarkdown canvas={canvas} />;
     case "diff":
-      return <DiffCanvas canvas={canvas} />;
+      return <CanvasDiff canvas={canvas} />;
     case "table":
-      return <TableCanvas canvas={canvas} />;
+      return <CanvasTable canvas={canvas} />;
     case "stats":
-      return <StatsCanvas canvas={canvas} />;
+      return <CanvasStats canvas={canvas} />;
   }
 }

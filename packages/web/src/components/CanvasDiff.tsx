@@ -5,7 +5,7 @@ import type { CanvasArtifact, CanvasDiffFile } from "@aoagents/ao-core";
 
 type Props = { canvas: Extract<CanvasArtifact, { type: "diff" }> };
 
-export function DiffCanvas({ canvas }: Props) {
+export function CanvasDiff({ canvas }: Props) {
   return (
     <div className="flex flex-col gap-3">
       {canvas.payload.files.map((file) => (
