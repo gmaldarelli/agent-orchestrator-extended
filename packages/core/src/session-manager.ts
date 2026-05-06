@@ -1877,6 +1877,7 @@ export function createSessionManager(deps: SessionManagerDeps): OpenCodeSessionM
         throw new Error(
           `Orchestrator session "${sessionId}" could not be created after retry. ` +
             `Another process may be creating it concurrently. Original error: ${retryErr instanceof Error ? retryErr.message : String(retryErr)}`,
+          { cause: retryErr },
         );
       }
     }
