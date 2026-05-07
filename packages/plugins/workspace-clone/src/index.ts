@@ -3,7 +3,15 @@ import { promisify } from "node:util";
 import { existsSync, rmSync, mkdirSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
-import { getShell, type PluginModule, type Workspace, type WorkspaceCreateConfig, type WorkspaceInfo, type ProjectConfig } from "@aoagents/ao-core";
+import {
+  getShell,
+  recordActivityEvent,
+  type PluginModule,
+  type Workspace,
+  type WorkspaceCreateConfig,
+  type WorkspaceInfo,
+  type ProjectConfig,
+} from "@aoagents/ao-core";
 
 const execFileAsync = promisify(execFile);
 
@@ -35,6 +43,14 @@ function expandPath(p: string): string {
     return join(homedir(), p.slice(2));
   }
   return p;
+}
+
+function getErrorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
+function isBranchAlreadyExistsError(err: unknown): boolean {
+  return getErrorMessage(err).toLowerCase().includes("already exists");
 }
 
 export function create(config?: Record<string, unknown>): Workspace {
@@ -97,8 +113,24 @@ export function create(config?: Record<string, unknown>): Workspace {
       // Create and checkout the feature branch
       try {
         await git(clonePath, "checkout", "-b", cfg.branch);
-      } catch {
-        // Branch may exist on remote — try plain checkout
+      } catch (branchErr: unknown) {
+        // Branch may exist on remote — try plain checkout, but only label it
+        // as a branch_collision when git reported the distinct collision shape.
+        if (isBranchAlreadyExistsError(branchErr)) {
+          recordActivityEvent({
+            projectId: cfg.projectId,
+            sessionId: cfg.sessionId,
+            source: "workspace",
+            kind: "workspace.branch_collision",
+            level: "warn",
+            summary: `branch "${cfg.branch}" already exists; falling back to checkout`,
+            data: {
+              plugin: "workspace-clone",
+              branch: cfg.branch,
+              errorMessage: getErrorMessage(branchErr),
+            },
+          });
+        }
         try {
           await git(clonePath, "checkout", cfg.branch);
         } catch (checkoutErr: unknown) {
@@ -142,10 +174,24 @@ export function create(config?: Record<string, unknown>): Workspace {
         try {
           branch = await git(clonePath, "branch", "--show-current");
         } catch (err: unknown) {
-          // Warn about corrupted clones instead of silently skipping
+          // Warn about corrupted clones instead of silently skipping.
+          // RCA: "session shows up on disk but isn't returned by list()".
           const msg = err instanceof Error ? err.message : String(err);
           // eslint-disable-next-line no-console -- expected diagnostic for corrupted clones
           console.warn(`[workspace-clone] Skipping "${entry.name}": not a valid git repo (${msg})`);
+          recordActivityEvent({
+            projectId,
+            sessionId: entry.name,
+            source: "workspace",
+            kind: "workspace.corrupt_clone_skipped",
+            level: "warn",
+            summary: `skipped corrupt clone "${entry.name}"`,
+            data: {
+              plugin: "workspace-clone",
+              clonePath,
+              errorMessage: msg,
+            },
+          });
           continue;
         }
 
