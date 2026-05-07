@@ -993,6 +993,55 @@ describe("check (single session)", () => {
     expect(meta?.["branch"]).toBe("fix-login");
   });
 
+  it("does not call detectPR when the session's PR is in a terminal merged state", async () => {
+    const workspacePath = join(env.tmpDir, "worker-ws-merged-pr");
+    const gitDir = join(env.tmpDir, "repo", ".git", "worktrees", "app-1-merged-pr");
+    mkdirSync(workspacePath, { recursive: true });
+    mkdirSync(gitDir, { recursive: true });
+    writeFileSync(join(workspacePath, ".git"), `gitdir: ${gitDir}\n`);
+    writeFileSync(join(gitDir, "HEAD"), "ref: refs/heads/main\n");
+
+    const mergedPR = makePR({ branch: "feat/old", url: "https://github.com/org/repo/pull/100" });
+    const mockSCM = createMockSCM({ detectPR: vi.fn().mockResolvedValue(makePR({ number: 643 })) });
+    const registry = createMockRegistry({
+      runtime: plugins.runtime,
+      agent: plugins.agent,
+      scm: mockSCM,
+    });
+
+    // Simulate the bug condition: session.branch drifted to "main" (default
+    // branch) after a merge, and session.pr was cleared elsewhere — but the
+    // canonical lifecycle still records the merged terminal state.
+    const session = makeSession({
+      status: "merged",
+      branch: "main",
+      workspacePath,
+      pr: null,
+      metadata: { agent: "mock-agent" },
+    });
+    session.lifecycle.pr.state = "merged";
+    session.lifecycle.pr.reason = "merge_observed";
+    session.lifecycle.pr.number = mergedPR.number;
+    session.lifecycle.pr.url = mergedPR.url;
+    session.lifecycle.pr.lastObservedAt = new Date().toISOString();
+
+    const lm = setupCheck("app-1", {
+      session,
+      metaOverrides: {
+        worktree: workspacePath,
+        branch: "main",
+        agent: "mock-agent",
+      },
+      registry,
+    });
+
+    await lm.check("app-1");
+
+    expect(mockSCM.detectPR).not.toHaveBeenCalled();
+    const meta = readMetadataRaw(env.sessionsDir, "app-1");
+    expect(meta?.["pr"] ?? "").not.toContain("/pull/643");
+  });
+
   it("refreshes branch metadata again after a closed PR when the worker switches branches", async () => {
     const workspacePath = join(env.tmpDir, "worker-ws-closed-pr");
     const gitDir = join(env.tmpDir, "repo", ".git", "worktrees", "app-1-closed-pr");

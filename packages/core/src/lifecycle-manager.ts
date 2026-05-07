@@ -654,6 +654,18 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
       if (session.metadata["prAutoDetect"] === "off" || session.metadata["prAutoDetect"] === "false") continue;
       if (session.metadata["role"] === "orchestrator" || session.id.endsWith("-orchestrator"))
         continue;
+      // Once a session's PR is merged, do not re-run detectPR. The head
+      // branch is typically deleted on merge and session.branch may have
+      // drifted to the default branch (e.g. agent-side `git checkout main`);
+      // detectPR on the default branch would then match unrelated PRs
+      // (including fork PRs that share the head ref name). The merged PR
+      // association is settled — preserve it.
+      // Note: `closed` (unmerged) intentionally does NOT short-circuit here;
+      // an agent that pivots to a new branch after a closed PR should be
+      // able to rediscover the follow-up PR via detectPR.
+      if (session.lifecycle.pr.state === "merged") {
+        continue;
+      }
       if (
         session.pr &&
         !(session.lifecycle.pr.state === "closed" && session.pr.branch !== session.branch)
