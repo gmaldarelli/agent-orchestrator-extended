@@ -66,6 +66,11 @@ export function create(): Runtime {
       // Create tmux session in detached mode
       await tmux("new-session", "-d", "-s", sessionName, "-c", config.workspacePath, ...envArgs);
 
+      // Hide the tmux status bar — sessions are embedded in the web terminal,
+      // and the green bar at the bottom is visual noise (and racy with the
+      // web layer's own set-option call, which only fires on WebSocket connect).
+      await tmux("set-option", "-t", sessionName, "status", "off");
+
       // Re-export PATH inside the launch script. macOS zsh runs path_helper
       // during shell startup which resets PATH, wiping entries set via tmux -e.
       // Including the export in the script file (not send-keys) avoids terminal

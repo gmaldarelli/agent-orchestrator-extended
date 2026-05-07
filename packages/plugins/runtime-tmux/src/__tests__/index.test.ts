@@ -83,7 +83,8 @@ describe("runtime.create()", () => {
   it("calls new-session with correct args", async () => {
     const runtime = create();
 
-    // 1: new-session, 2: send-keys (launch command)
+    // 1: new-session, 2: set-option status off, 3: send-keys (launch command)
+    mockTmuxSuccess();
     mockTmuxSuccess();
     mockTmuxSuccess();
 
@@ -106,9 +107,34 @@ describe("runtime.create()", () => {
     );
   });
 
+  it("disables the tmux status bar immediately after new-session", async () => {
+    const runtime = create();
+
+    // 1: new-session, 2: set-option status off, 3: send-keys
+    mockTmuxSuccess();
+    mockTmuxSuccess();
+    mockTmuxSuccess();
+
+    await runtime.create({
+      sessionId: "status-bar-off",
+      workspacePath: "/tmp/ws",
+      launchCommand: "echo hi",
+      environment: {},
+    });
+
+    // Second call must be set-option ... status off, scoped to the session
+    expect(mockExecFileCustom).toHaveBeenNthCalledWith(
+      2,
+      "tmux",
+      ["set-option", "-t", "status-bar-off", "status", "off"],
+      expectedTmuxOptions,
+    );
+  });
+
   it("includes -e KEY=VALUE flags for environment variables", async () => {
     const runtime = create();
 
+    mockTmuxSuccess();
     mockTmuxSuccess();
     mockTmuxSuccess();
 
@@ -132,6 +158,7 @@ describe("runtime.create()", () => {
 
     mockTmuxSuccess();
     mockTmuxSuccess();
+    mockTmuxSuccess();
 
     await runtime.create({
       sessionId: "launch-test",
@@ -140,7 +167,7 @@ describe("runtime.create()", () => {
       environment: {},
     });
 
-    // Second call: send-keys with the launch command
+    // Third call: send-keys with the launch command (after new-session and set-option)
     expect(mockExecFileCustom).toHaveBeenCalledWith(
       "tmux",
       ["send-keys", "-t", "launch-test", "claude --session abc", "Enter"],
@@ -152,6 +179,8 @@ describe("runtime.create()", () => {
     const runtime = create();
     const longCommand = "x".repeat(250);
 
+    // 1: new-session, 2: set-option, 3: send-keys -l, 4: send-keys Enter
+    mockTmuxSuccess();
     mockTmuxSuccess();
     mockTmuxSuccess();
     mockTmuxSuccess();
@@ -170,7 +199,7 @@ describe("runtime.create()", () => {
     );
 
     expect(mockExecFileCustom).toHaveBeenNthCalledWith(
-      2,
+      3,
       "tmux",
       [
         "send-keys",
@@ -183,7 +212,7 @@ describe("runtime.create()", () => {
     );
 
     expect(mockExecFileCustom).toHaveBeenNthCalledWith(
-      3,
+      4,
       "tmux",
       ["send-keys", "-t", "launch-long", "Enter"],
       expectedTmuxOptions,
@@ -195,9 +224,11 @@ describe("runtime.create()", () => {
 
     // 1: new-session succeeds
     mockTmuxSuccess();
-    // 2: send-keys fails
+    // 2: set-option succeeds
+    mockTmuxSuccess();
+    // 3: send-keys fails
     mockTmuxError("send-keys failed");
-    // 3: kill-session (cleanup attempt)
+    // 4: kill-session (cleanup attempt)
     mockTmuxSuccess();
 
     await expect(
@@ -248,6 +279,7 @@ describe("runtime.create()", () => {
 
     mockTmuxSuccess();
     mockTmuxSuccess();
+    mockTmuxSuccess();
 
     const handle = await runtime.create({
       sessionId: "valid-session_123",
@@ -262,6 +294,7 @@ describe("runtime.create()", () => {
   it("handles no environment (undefined)", async () => {
     const runtime = create();
 
+    mockTmuxSuccess();
     mockTmuxSuccess();
     mockTmuxSuccess();
 
