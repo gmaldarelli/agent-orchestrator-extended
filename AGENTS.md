@@ -44,7 +44,7 @@ Agents working on this repo should use these checked-in skills:
 - NPM package regression diffing
 - Remote code inspection when the repo isn't cloned locally
 
-**How to load:** Read `.skills/bug-triage/SKILL.md` and follow its step-by-step workflow. The `scripts/` directory contains executable tools:
+**How to load:** Read `skills/bug-triage/SKILL.md` and follow its step-by-step workflow. The `scripts/` directory contains executable tools:
 - `push_fix_to_github.py` — Push a single-file fix and create a PR entirely via GitHub API
 
 **Always pull latest main before triaging.** Stale code = bad triage. No exceptions.
