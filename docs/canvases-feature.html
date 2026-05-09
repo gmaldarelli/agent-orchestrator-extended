@@ -208,6 +208,7 @@
     <li><a href="#schema">Schema and what renders</a></li>
     <li><a href="#synthesized">The synthesized git-diff canvas</a></li>
     <li><a href="#extend">How to extend it</a></li>
+    <li><a href="#validation">Validation rules</a></li>
     <li><a href="#namespacing">Canvas-id namespacing</a></li>
     <li><a href="#paranoia">Built with paranoia</a></li>
     <li><a href="#files">File map</a></li>
@@ -499,7 +500,20 @@ type CanvasArtifact = BuiltInCanvasArtifact | PluginCanvasArtifact;</code></pre>
   <strong>The contract — and the honest trust statement.</strong> Three rules across all four tiers: anyone supplies any data in any supported type (no permission needed); anyone ships a new type via plugin (<code>npm install</code> is the trust gate); no remote-loaded JS at runtime (plugins discovered from <code>node_modules</code> at startup, renderers bundled at web build time). <strong>Be honest about what this means:</strong> a canvas renderer plugin is arbitrary dashboard code — it can read same-origin auth tokens, call same-origin APIs, keylog within the app, alter UI state. Build-time bundling removes the <em>remote-loading</em> risk; it does <em>not</em> reduce blast radius. <strong>Installing a canvas renderer plugin grants full dashboard code execution</strong> — the install path will surface this as a warning. Iframe sandboxing is deferred until v0.4 ships and a real need surfaces; half-baked iframe support is worse than no sandbox.
 </div>
 
-<h2 id="namespacing">5b. Canvas-id namespacing</h2>
+<h2 id="validation">5b. Validation rules</h2>
+<p>Canvases that fail validation are dropped silently and logged. Rules core enforces today:</p>
+<ul>
+  <li><code>version</code> must be <code>1</code>.</li>
+  <li><code>type</code> must be a known <code>CanvasType</code> (one of the four built-ins, or — in v0.4 — a registered plugin canvas type).</li>
+  <li><code>id</code> must match <code>[a-z0-9][a-z0-9-]{0,63}</code>.</li>
+  <li>The <code>core-</code> id prefix is reserved for canvases synthesized by AO core. File canvases using this prefix are dropped at the reader.</li>
+  <li>Total serialized size capped at 256 KB per canvas.</li>
+  <li>Per-session count capped at 32 canvases (oldest by <code>updatedAt</code> evicted).</li>
+  <li>Payload must structurally match the type's Zod schema.</li>
+  <li>For <code>diff</code> canvases specifically: max 200 files / 50 hunks per file / 1000 lines per hunk (added in pass 13 to prevent DOM blowup).</li>
+</ul>
+
+<h2 id="namespacing">5c. Canvas-id namespacing</h2>
 <p>Two separate concerns, often conflated:</p>
 <ul>
   <li><strong><code>id</code></strong> — the filesystem identity of a canvas file (<code>{workspacePath}/.ao/canvases/{id}.json</code>) and its stable UI identity for animations / collapse state. Reserved prefix: <code>core-</code> for canvases synthesized by AO core (<code>core-git-diff</code>, etc). File canvases using <code>core-</code> are dropped by the reader.</li>
@@ -618,9 +632,9 @@ EOF</code></pre>
 </ul>
 
 <footer>
-  Source of truth: <a href="canvases.md"><code>docs/canvases.md</code></a> ·
-  Companion docs: <a href="canvases-launch.html">launch HTML</a>, <a href="canvases-launch.md">launch markdown</a>, <a href="canvases-codex-review-2026-05-06.html">codex review writeup</a> ·
-  Implementation: <a href="https://github.com/ComposioHQ/agent-orchestrator/pull/1653">PR #1653</a>
+  Companion docs: <a href="canvases-launch.html">launch / showcase</a> · <a href="canvases-codex-review-2026-05-06.html">codex review writeup</a> ·
+  Implementation: <a href="https://github.com/ComposioHQ/agent-orchestrator/pull/1653">PR #1653</a> ·
+  Source: <a href="../packages/core/src/types.ts"><code>types.ts</code></a>, <a href="../packages/core/src/canvas-log.ts"><code>canvas-log.ts</code></a>, <a href="../packages/core/src/canvas-schema.ts"><code>canvas-schema.ts</code></a>
 </footer>
 
 </main>
