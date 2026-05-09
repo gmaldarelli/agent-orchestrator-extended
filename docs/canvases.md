@@ -112,9 +112,10 @@ Synthesized canvases (PR, CI, cost) are computed on read and not persisted. If a
 
 ## Roadmap
 
-- **v0.1 (shipped)** — file reader, `GET /api/sessions/[id]/canvases`, four built-in renderers, `core.git-diff` synthesized canvas, right-rail in `SessionDetail` (auto-expands when canvases exist), 5s REST poll with visibility-aware pause.
+- **v0.1 (shipped)** — file reader, `GET /api/sessions/[id]/canvases`, four built-in renderers, `core.git-diff` synthesized canvas, right-rail in `SessionDetail` **desktop only** (auto-expands when canvases exist), 5s REST poll with visibility-aware pause.
 - **v0.2** — `CanvasProducer` invoked on agent / SCM / tracker plugins.
 - **v0.3** — mux topic for live updates, replacing poll.
+- **Mobile** — deferred. The rail is gated `!isMobile` in [`SessionDetail.tsx`](../packages/web/src/components/SessionDetail.tsx); below the mobile breakpoint the page falls back to its existing single-column layout. A proper mobile UI (bottom sheet or full-screen takeover) is a separate design pass.
 - **Later, only if justified** — sandboxed iframe escape hatch for custom UI, build-time allowlisted renderer packages.
 
 Out of scope indefinitely: dynamic React imports from third-party plugins, write APIs from the dashboard back into canvases, action buttons that mutate session state.

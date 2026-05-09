@@ -63,11 +63,9 @@ The rail starts collapsed when a session has no canvases. A thin tab on the righ
 
 ![Collapsed and expanded states of the canvas rail](assets/canvases/canvases-empty.png)
 
-## Mobile gracefully hides
+## Mobile: not supported in v0.1
 
-The rail is desktop-only. On viewports under the mobile breakpoint, the SessionDetail page renders without it — no overflow, no awkward stacking.
-
-![Session detail on mobile viewport — rail hidden, content full-width](assets/canvases/canvases-mobile.png)
+Canvases are a desktop-only feature for now. On viewports below the mobile breakpoint the rail isn't rendered at all — the session detail page falls back to its existing single-column layout. We'll revisit a proper mobile experience (likely a bottom sheet or full-screen takeover) once the desktop surface settles.
 
 ## How extensible is this?
 

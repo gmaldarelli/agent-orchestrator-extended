@@ -186,7 +186,8 @@
       <li><a href="#pitch">The pitch</a></li>
       <li><a href="#try">Try it locally in 30 seconds</a></li>
       <li><a href="#renders">What renders</a></li>
-      <li><a href="#empty">Empty state, mobile, and discoverability</a></li>
+      <li><a href="#empty">Empty state and discoverability</a></li>
+      <li><a href="#mobile">Mobile: not supported in v0.1</a></li>
       <li><a href="#extensible">How extensible is this?</a></li>
       <li><a href="#deferred">What's deliberately not in v0.1</a></li>
       <li><a href="#paranoia">Built with paranoia</a></li>
@@ -267,7 +268,7 @@ EOF
   </table>
   <p>The <code>tone</code> field on <code>stats</code> maps to AO's existing status tokens — <span style="color: var(--good)">good</span> is green, <span style="color: var(--bad)">bad</span> is red, <span style="color: var(--warn)">warn</span> is amber, <code>neutral</code> matches the surrounding text. No new design tokens.</p>
 
-  <h2 id="empty">Empty state, mobile, and discoverability</h2>
+  <h2 id="empty">Empty state and discoverability</h2>
   <p>The rail starts collapsed when a session has no canvases. A thin tab on the right edge expands it on click.</p>
 
   <figure>
@@ -275,12 +276,8 @@ EOF
     <figcaption>Empty state when a session has no canvas files and no synthesized diff.</figcaption>
   </figure>
 
-  <p>The rail is desktop-only. On viewports under the mobile breakpoint, the SessionDetail page renders without it — no overflow, no awkward stacking.</p>
-
-  <figure>
-    <img src="assets/canvases/canvases-mobile.png" alt="Mobile viewport — rail hidden, content full-width" />
-    <figcaption>Mobile viewport. The rail is hidden by the <code>!isMobile</code> guard.</figcaption>
-  </figure>
+  <h2 id="mobile">Mobile: not supported in v0.1</h2>
+  <p>Canvases are a desktop-only feature for now. On viewports below the mobile breakpoint the rail isn't rendered at all — the session detail page falls back to its existing single-column layout. We'll revisit a proper mobile experience (likely a bottom sheet or full-screen takeover) once the desktop surface settles.</p>
 
   <h2 id="extensible">How extensible is this?</h2>
   <p>Third parties can ship canvases without forking AO. The contract is <strong>expressive data, constrained UI</strong> — anyone can supply data in any of the 4 renderer types, but no third party ships React into the supervisor dashboard. Trade-off: new canvas <em>types</em> (e.g. <code>timeline</code>, <code>chart</code>) need a core PR; new canvas <em>content</em> needs nothing.</p>
