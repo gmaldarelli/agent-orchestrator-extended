@@ -879,6 +879,9 @@ function buildEffectiveConfigFromGlobalConfigPath(configPath: string): LoadedCon
         path: entry.path,
         resolveError: error.message,
       };
+      if (error.reasonKind === "malformed" || error.reasonKind === "invalid") {
+        continue;
+      }
       recordActivityEvent({
         projectId,
         source: "config",

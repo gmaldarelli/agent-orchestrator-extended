@@ -7,7 +7,7 @@ import { z } from "zod";
 import { atomicWriteFileSync } from "./atomic-write.js";
 import { detectScmPlatform } from "./config-generator.js";
 import { withFileLockSync } from "./file-lock.js";
-import { ProjectResolveError } from "./types.js";
+import { ProjectResolveError, type ProjectResolveErrorKind } from "./types.js";
 import { generateSessionPrefix } from "./paths.js";
 import { normalizeOriginUrl } from "./storage-key.js";
 import { getDefaultRuntime } from "./platform.js";
@@ -799,6 +799,7 @@ export function resolveProjectIdentity(
       defaultBranch: string;
       sessionPrefix: string;
       resolveError?: string;
+      resolveErrorKind?: ProjectResolveErrorKind;
     })
   | null {
   const entry = globalConfig.projects[projectId] as
@@ -907,11 +908,18 @@ export function resolveProjectIdentity(
     localConfigResult.kind !== "missing"
       ? (localConfigResult.error ?? "Failed to load local config")
       : undefined;
+  const resolveErrorKind: ProjectResolveErrorKind | undefined =
+    localConfigResult.kind === "malformed" ||
+    localConfigResult.kind === "invalid" ||
+    localConfigResult.kind === "old-format"
+      ? localConfigResult.kind
+      : undefined;
 
   return {
     ...(resolveError ? {} : applyBehaviorDefaults({})),
     ...identityFields,
     ...(resolveError ? { resolveError } : {}),
+    ...(resolveErrorKind ? { resolveErrorKind } : {}),
   };
 }
 

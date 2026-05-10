@@ -52,19 +52,22 @@ describe("activity events: config loading", () => {
     rmSync(tempRoot, { recursive: true, force: true });
   });
 
-  it("emits config.project_resolve_failed when a project's local yaml is broken", () => {
-    const projectPath = join(tempRoot, "broken");
+  it("emits config.project_resolve_failed for unresolved projects without a specific config event", () => {
+    const projectPath = join(tempRoot, "old-format");
     mkdirSync(projectPath, { recursive: true });
-    writeFileSync(join(projectPath, "agent-orchestrator.yaml"), "tracker: [\n");
+    writeFileSync(
+      join(projectPath, "agent-orchestrator.yaml"),
+      ["projects:", "  old-format:", "    path: .", ""].join("\n"),
+    );
 
     saveGlobalConfig(
       makeGlobalConfig({
-        broken: {
-          projectId: "broken",
+        "old-format": {
+          projectId: "old-format",
           path: projectPath,
-          displayName: "Broken",
+          displayName: "Old format",
           defaultBranch: "main",
-          sessionPrefix: "broken",
+          sessionPrefix: "old-format",
         },
       }),
       configPath,
@@ -76,9 +79,40 @@ describe("activity events: config loading", () => {
       expect.objectContaining({
         source: "config",
         kind: "config.project_resolve_failed",
-        projectId: "broken",
+        projectId: "old-format",
       }),
     );
+  });
+
+  it("does not emit config.project_resolve_failed for malformed local yaml", () => {
+    const projectPath = join(tempRoot, "malformed");
+    mkdirSync(projectPath, { recursive: true });
+    writeFileSync(join(projectPath, "agent-orchestrator.yaml"), "tracker: [\n");
+
+    saveGlobalConfig(
+      makeGlobalConfig({
+        malformed: {
+          projectId: "malformed",
+          path: projectPath,
+          displayName: "Malformed",
+          defaultBranch: "main",
+          sessionPrefix: "malformed",
+        },
+      }),
+      configPath,
+    );
+
+    loadConfig(configPath);
+
+    expect(recordActivityEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        source: "config",
+        kind: "config.project_malformed",
+        projectId: "malformed",
+      }),
+    );
+    const calls = vi.mocked(recordActivityEvent).mock.calls.map((c) => c[0]);
+    expect(calls.find((c) => c.kind === "config.project_resolve_failed")).toBeUndefined();
   });
 
   it("does not emit config.project_resolve_failed for healthy projects", () => {
@@ -165,5 +199,7 @@ describe("activity events: config loading", () => {
         projectId: "invalid",
       }),
     );
+    const calls = vi.mocked(recordActivityEvent).mock.calls.map((c) => c[0]);
+    expect(calls.find((c) => c.kind === "config.project_resolve_failed")).toBeUndefined();
   });
 });
