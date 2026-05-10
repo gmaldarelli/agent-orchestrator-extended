@@ -32,6 +32,7 @@ interface ShellInfo {
 }
 
 let cachedShell: ShellInfo | null = null;
+let cachedGitExecutable: string | null = null;
 
 /**
  * Infer the command-string flag for a given shell from its basename.
@@ -86,8 +87,10 @@ function findOnPath(name: string): string | null {
  * worktree setup from failing with a raw ENOENT when Git is installed.
  */
 export function getGitExecutable(): string {
+  if (cachedGitExecutable) return cachedGitExecutable;
+
   const pathGit = findOnPath("git");
-  if (pathGit) return pathGit;
+  if (pathGit) return (cachedGitExecutable = pathGit);
 
   const candidates = isWindows()
     ? [
@@ -100,7 +103,14 @@ export function getGitExecutable(): string {
       ? ["/usr/bin/git", "/opt/homebrew/bin/git", "/usr/local/bin/git"]
       : ["/usr/bin/git", "/usr/local/bin/git"];
 
-  return candidates.find((candidate) => existsSync(candidate)) ?? "git";
+  return (cachedGitExecutable = candidates.find((candidate) => existsSync(candidate)) ?? "git");
+}
+
+/** Reset cached git executable (for testing)
+ * @internal
+ */
+export function _resetGitExecutableCache(): void {
+  cachedGitExecutable = null;
 }
 
 function resolveWindowsShell(): ShellInfo {
