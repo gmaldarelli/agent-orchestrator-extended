@@ -1,6 +1,12 @@
 import { spawn } from "node:child_process";
+import { existsSync } from "node:fs";
 import type { Command } from "commander";
 import chalk from "chalk";
+import {
+  getGlobalConfigPath,
+  loadConfig,
+  type Session,
+} from "@aoagents/ao-core";
 import { runRepoScript } from "../lib/script-runner.js";
 import {
   checkForUpdate,
@@ -8,13 +14,30 @@ import {
   getCurrentVersion,
   getUpdateCommand,
   invalidateCache,
+  isManualOnlyInstall,
+  resolveUpdateChannel,
+  type InstallMethod,
 } from "../lib/update-check.js";
 import { promptConfirm } from "../lib/prompts.js";
+import { getSessionManager } from "../lib/create-session-manager.js";
 
 /** Inline check instead of module-level constant so tests can control TTY state. */
 function isTTY(): boolean {
   return Boolean(process.stdin.isTTY && process.stdout.isTTY);
 }
+
+/**
+ * Statuses that mean "the agent is doing real work right now and updating
+ * `ao` would yank the rug out from under it."
+ *
+ * Mirrors the design doc (release-process.html §07): refuse, never auto-stop.
+ */
+const ACTIVE_SESSION_STATUSES = new Set<Session["status"]>([
+  "working",
+  "idle",
+  "needs_input",
+  "stuck",
+]);
 
 export function registerUpdate(program: Command): void {
   program
@@ -32,7 +55,6 @@ export function registerUpdate(program: Command): void {
           process.exit(1);
         }
 
-        // --check: print JSON and exit
         if (opts.check) {
           await handleCheck();
           return;
@@ -44,9 +66,13 @@ export function registerUpdate(program: Command): void {
           case "git":
             await handleGitUpdate(opts);
             break;
+          case "homebrew":
+            await handleHomebrewUpdate();
+            break;
           case "npm-global":
           case "pnpm-global":
-            await handleNpmUpdate(opts);
+          case "bun-global":
+            await handleNpmUpdate(method);
             break;
           case "unknown":
             await handleUnknownUpdate();
@@ -66,6 +92,64 @@ async function handleCheck(): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
+// Active-session guard
+// ---------------------------------------------------------------------------
+
+/**
+ * Refuse to update when the user has live sessions.
+ *
+ * Auto-stopping would lose the agent's in-flight context (and potentially
+ * uncommitted work). The release doc is explicit: refuse, surface the
+ * `ao stop` command, let the user decide.
+ *
+ * Best-effort — when no config is reachable (fresh install, broken yaml)
+ * we skip the guard rather than blocking the update on a missing dependency.
+ */
+async function ensureNoActiveSessions(): Promise<boolean> {
+  let sessions: Session[];
+  try {
+    let config;
+    try {
+      config = loadConfig();
+    } catch {
+      // Try the global config explicitly so `ao update` works from a directory
+      // outside any registered project.
+      const globalPath = getGlobalConfigPath();
+      if (!existsSync(globalPath)) return true; // No projects ⇒ nothing to guard.
+      config = loadConfig(globalPath);
+    }
+    const sm = await getSessionManager(config);
+    sessions = await sm.list();
+  } catch {
+    // If we can't enumerate sessions, don't pretend there are zero — but
+    // also don't block the upgrade indefinitely. Surface a soft warning.
+    console.error(
+      chalk.yellow(
+        "⚠ Could not check for active sessions before updating. Proceeding anyway.",
+      ),
+    );
+    return true;
+  }
+
+  const active = sessions.filter((s) => ACTIVE_SESSION_STATUSES.has(s.status));
+  if (active.length === 0) return true;
+
+  const noun = active.length === 1 ? "session" : "sessions";
+  console.error(
+    chalk.red(
+      `\n✗ ${active.length} ${noun} active. Run \`ao stop\` first, then \`ao update\`.\n`,
+    ),
+  );
+  for (const s of active.slice(0, 5)) {
+    console.error(chalk.dim(`    • ${s.id}  (${s.status})`));
+  }
+  if (active.length > 5) {
+    console.error(chalk.dim(`    … and ${active.length - 5} more`));
+  }
+  return false;
+}
+
+// ---------------------------------------------------------------------------
 // git install
 // ---------------------------------------------------------------------------
 
@@ -73,6 +157,10 @@ async function handleGitUpdate(opts: {
   skipSmoke?: boolean;
   smokeOnly?: boolean;
 }): Promise<void> {
+  if (!(await ensureNoActiveSessions())) {
+    process.exit(1);
+  }
+
   const args: string[] = [];
   if (opts.skipSmoke) args.push("--skip-smoke");
   if (opts.smokeOnly) args.push("--smoke-only");
@@ -104,20 +192,12 @@ async function handleGitUpdate(opts: {
 }
 
 // ---------------------------------------------------------------------------
-// npm-global install
+// npm / pnpm / bun global install
 // ---------------------------------------------------------------------------
 
-async function handleNpmUpdate(opts: {
-  skipSmoke?: boolean;
-  smokeOnly?: boolean;
-}): Promise<void> {
-  if (opts.skipSmoke || opts.smokeOnly) {
-    console.log(
-      chalk.yellow("--skip-smoke and --smoke-only only apply to git source installs. Ignoring."),
-    );
-  }
-
-  const info = await checkForUpdate({ force: true });
+async function handleNpmUpdate(method: InstallMethod): Promise<void> {
+  const channel = resolveUpdateChannel();
+  const info = await checkForUpdate({ force: true, channel });
 
   if (!info.latestVersion) {
     console.error(chalk.red("Could not reach npm registry. Check your network and try again."));
@@ -125,25 +205,36 @@ async function handleNpmUpdate(opts: {
   }
 
   if (!info.isOutdated) {
-    console.log(chalk.green(`Already on latest version (${info.currentVersion}).`));
+    console.log(chalk.green(`Already on latest ${channel === "nightly" ? "nightly" : "version"} (${info.currentVersion}).`));
     return;
   }
 
   console.log(`Current version: ${chalk.dim(info.currentVersion)}`);
   console.log(`Latest version:  ${chalk.green(info.latestVersion)}`);
+  console.log(`Channel:         ${chalk.cyan(channel)}`);
   console.log();
 
-  const command = info.recommendedCommand;
+  const command = getUpdateCommand(method, channel);
 
   if (!isTTY()) {
-    // Non-interactive: print the command. Exit 0 because this isn't an error,
-    // the user just needs to run the command manually.
     console.log(`Run: ${chalk.cyan(command)}`);
     return;
   }
 
-  const confirmed = await promptConfirm(`Run ${chalk.cyan(command)}?`);
-  if (!confirmed) return;
+  if (!(await ensureNoActiveSessions())) {
+    process.exit(1);
+  }
+
+  // Soft auto-install: when the user has opted into stable or nightly we
+  // skip the confirm prompt — they've already said "keep me on this channel."
+  // Manual users still see the confirm so an unintended `ao update` doesn't
+  // wipe the version they pinned to.
+  if (channel === "manual") {
+    const confirmed = await promptConfirm(`Run ${chalk.cyan(command)}?`);
+    if (!confirmed) return;
+  } else {
+    console.log(chalk.dim(`Updating: ${command}`));
+  }
 
   const exitCode = await runNpmInstall(command);
   if (exitCode === 0) {
@@ -174,20 +265,52 @@ function runNpmInstall(command: string): Promise<number> {
 }
 
 // ---------------------------------------------------------------------------
+// homebrew install (notice only)
+// ---------------------------------------------------------------------------
+
+async function handleHomebrewUpdate(): Promise<void> {
+  const channel = resolveUpdateChannel();
+  const info = await checkForUpdate({ force: true, channel });
+  console.log(`Installed via:   ${chalk.yellow("Homebrew")}`);
+  console.log(`Current version: ${chalk.dim(info.currentVersion)}`);
+  if (info.latestVersion) {
+    console.log(`Latest version:  ${chalk.green(info.latestVersion)}`);
+  }
+  console.log();
+  console.log(
+    `Homebrew installs are managed by brew. Run:\n  ${chalk.cyan("brew upgrade ao")}`,
+  );
+  console.log(
+    chalk.dim(
+      "  (AO does not auto-install for brew installs because it would clobber brew's symlinks.)",
+    ),
+  );
+}
+
+// ---------------------------------------------------------------------------
 // unknown install
 // ---------------------------------------------------------------------------
 
 async function handleUnknownUpdate(): Promise<void> {
   const version = getCurrentVersion();
-  const info = await checkForUpdate({ force: true });
+  const channel = resolveUpdateChannel();
+  const info = await checkForUpdate({ force: true, channel });
 
   console.log(`Installed version: ${chalk.dim(version)}`);
   if (info.latestVersion) {
     console.log(`Latest version:    ${chalk.green(info.latestVersion)}`);
   }
   console.log(`Install method:    ${chalk.yellow("unknown")}`);
+  console.log(`Channel:           ${chalk.cyan(channel)}`);
   console.log();
   console.log(
-    `Could not detect install method. If you installed via npm, run:\n  ${chalk.cyan(getUpdateCommand("npm-global"))}`,
+    `Could not detect install method. If you installed via npm, run:\n  ${chalk.cyan(getUpdateCommand("npm-global", channel))}`,
+  );
+  console.log(
+    chalk.dim(
+      `  Override detection in ~/.agent-orchestrator/config.yaml:\n    installMethod: pnpm-global  # or bun-global, npm-global, homebrew, git`,
+    ),
   );
 }
+
+export { isManualOnlyInstall };

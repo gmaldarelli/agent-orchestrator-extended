@@ -310,7 +310,10 @@ export type {
   LocalProjectConfig,
   LocalProjectConfigLoadResult,
   RegisterProjectOptions,
+  UpdateChannel,
+  InstallMethodOverride,
 } from "./global-config.js";
+export { UpdateChannelSchema, InstallMethodOverrideSchema } from "./global-config.js";
 
 export { loadEffectiveProjectConfig, iterateAllProjects } from "./project-resolver.js";
 

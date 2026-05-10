@@ -39,13 +39,51 @@ const {
   }),
 }));
 
+const { mockResolveUpdateChannel } = vi.hoisted(() => ({
+  mockResolveUpdateChannel: vi.fn(() => "manual" as "stable" | "nightly" | "manual"),
+}));
+
 vi.mock("../../src/lib/update-check.js", () => ({
   detectInstallMethod: () => mockDetectInstallMethod(),
   checkForUpdate: (...args: unknown[]) => mockCheckForUpdate(...args),
   invalidateCache: () => mockInvalidateCache(),
   getCurrentVersion: () => mockGetCurrentVersion(),
   getUpdateCommand: (...args: unknown[]) => mockGetUpdateCommand(...args),
+  resolveUpdateChannel: () => mockResolveUpdateChannel(),
+  isManualOnlyInstall: (m: string) => m === "homebrew",
 }));
+
+// Stub the active-session guard's dependencies so handlers don't try to load
+// real config / spawn plugins. Default: no sessions, so the guard passes.
+const { mockSessions } = vi.hoisted(() => ({
+  mockSessions: { value: [] as Array<{ id: string; status: string }> },
+}));
+
+vi.mock("../../src/lib/create-session-manager.js", () => ({
+  getSessionManager: vi.fn(async () => ({
+    list: async () => mockSessions.value,
+  })),
+}));
+
+import type * as AoCoreType from "@aoagents/ao-core";
+import type * as FsType from "node:fs";
+
+vi.mock("@aoagents/ao-core", async () => {
+  const actual = (await vi.importActual("@aoagents/ao-core")) as typeof AoCoreType;
+  return {
+    ...actual,
+    loadConfig: vi.fn(() => ({ projects: {}, configPath: "/tmp/test-config.yaml" })),
+    getGlobalConfigPath: () => "/tmp/test-global-config.yaml",
+  };
+});
+
+vi.mock("node:fs", async () => {
+  const actual = (await vi.importActual("node:fs")) as typeof FsType;
+  return {
+    ...actual,
+    existsSync: () => false, // Force the global-config fallback to skip the guard.
+  };
+});
 
 const { mockPromptConfirm } = vi.hoisted(() => ({
   mockPromptConfirm: vi.fn(async () => false),
@@ -107,6 +145,9 @@ describe("update command", () => {
     mockPromptConfirm.mockReset();
     mockPromptConfirm.mockResolvedValue(false);
     mockSpawn.mockReset();
+    mockResolveUpdateChannel.mockReset();
+    mockResolveUpdateChannel.mockReturnValue("manual");
+    mockSessions.value = [];
     origStdinTTY = process.stdin.isTTY;
     origStdoutTTY = process.stdout.isTTY;
     vi.spyOn(console, "error").mockImplementation(() => {});
@@ -254,19 +295,11 @@ describe("update command", () => {
       );
     });
 
-    it("warns when --skip-smoke is used", async () => {
-      mockCheckForUpdate.mockResolvedValue(makeNpmUpdateInfo({ isOutdated: false }));
-      const logSpy = vi.mocked(console.log);
-
-      await program.parseAsync(["node", "test", "update", "--skip-smoke"]);
-      expect(logSpy).toHaveBeenCalledWith(
-        expect.stringContaining("only apply to git source installs"),
-      );
-    });
-
     it("forces a fresh registry fetch", async () => {
       await program.parseAsync(["node", "test", "update"]);
-      expect(mockCheckForUpdate).toHaveBeenCalledWith({ force: true });
+      expect(mockCheckForUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({ force: true }),
+      );
     });
 
     it("prints command and exits cleanly in non-TTY mode without prompting", async () => {
@@ -404,7 +437,109 @@ describe("update command", () => {
     it("suggests npm install command", async () => {
       mockCheckForUpdate.mockResolvedValue(makeNpmUpdateInfo({ installMethod: "unknown" }));
       await program.parseAsync(["node", "test", "update"]);
-      expect(mockGetUpdateCommand).toHaveBeenCalledWith("npm-global");
+      // Channel passed alongside method (manual is the default in this test).
+      expect(mockGetUpdateCommand).toHaveBeenCalledWith("npm-global", "manual");
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // Active-session guard (Section C)
+  // -----------------------------------------------------------------------
+
+  describe("active-session guard", () => {
+    beforeEach(() => {
+      mockDetectInstallMethod.mockReturnValue("npm-global");
+      mockCheckForUpdate.mockResolvedValue(makeNpmUpdateInfo({ installMethod: "npm-global" }));
+      Object.defineProperty(process.stdin, "isTTY", { value: true, configurable: true });
+      Object.defineProperty(process.stdout, "isTTY", { value: true, configurable: true });
+    });
+
+    it("refuses to install when a session is in 'working'", async () => {
+      mockSessions.value = [{ id: "feat-1", status: "working" }];
+      const errSpy = vi.mocked(console.error);
+      await expect(
+        program.parseAsync(["node", "test", "update"]),
+      ).rejects.toThrow("process.exit(1)");
+      const messages = errSpy.mock.calls.map((c) => String(c[0])).join("\n");
+      expect(messages).toMatch(/1 session active/);
+      expect(messages).toMatch(/ao stop/);
+      expect(mockSpawn).not.toHaveBeenCalled();
+    });
+
+    it.each(["working", "idle", "needs_input", "stuck"])(
+      "refuses for status %s",
+      async (status) => {
+        mockSessions.value = [{ id: "feat-1", status }];
+        await expect(
+          program.parseAsync(["node", "test", "update"]),
+        ).rejects.toThrow("process.exit(1)");
+      },
+    );
+
+    it("does NOT refuse for terminal statuses (done, terminated, killed)", async () => {
+      mockSessions.value = [
+        { id: "old-1", status: "done" },
+        { id: "old-2", status: "terminated" },
+      ];
+      mockPromptConfirm.mockResolvedValue(false); // decline, no install
+      await program.parseAsync(["node", "test", "update"]);
+      // Reaches the prompt step since the guard passed.
+      expect(mockPromptConfirm).toHaveBeenCalled();
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // Soft auto-install (Section B)
+  // -----------------------------------------------------------------------
+
+  describe("soft auto-install", () => {
+    beforeEach(() => {
+      mockDetectInstallMethod.mockReturnValue("npm-global");
+      mockCheckForUpdate.mockResolvedValue(makeNpmUpdateInfo({ installMethod: "npm-global" }));
+      Object.defineProperty(process.stdin, "isTTY", { value: true, configurable: true });
+      Object.defineProperty(process.stdout, "isTTY", { value: true, configurable: true });
+    });
+
+    it("skips the confirm prompt on stable channel", async () => {
+      mockResolveUpdateChannel.mockReturnValue("stable");
+      mockSpawn.mockReturnValue(createMockChild(0));
+      await program.parseAsync(["node", "test", "update"]);
+      expect(mockPromptConfirm).not.toHaveBeenCalled();
+      expect(mockSpawn).toHaveBeenCalled();
+    });
+
+    it("skips the confirm prompt on nightly channel", async () => {
+      mockResolveUpdateChannel.mockReturnValue("nightly");
+      mockSpawn.mockReturnValue(createMockChild(0));
+      await program.parseAsync(["node", "test", "update"]);
+      expect(mockPromptConfirm).not.toHaveBeenCalled();
+      expect(mockSpawn).toHaveBeenCalled();
+    });
+
+    it("still prompts on manual channel", async () => {
+      mockResolveUpdateChannel.mockReturnValue("manual");
+      mockPromptConfirm.mockResolvedValue(false);
+      await program.parseAsync(["node", "test", "update"]);
+      expect(mockPromptConfirm).toHaveBeenCalled();
+      expect(mockSpawn).not.toHaveBeenCalled();
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // Homebrew (Section F)
+  // -----------------------------------------------------------------------
+
+  describe("homebrew install", () => {
+    it("does not auto-install — surfaces the brew upgrade notice", async () => {
+      mockDetectInstallMethod.mockReturnValue("homebrew");
+      mockCheckForUpdate.mockResolvedValue(makeNpmUpdateInfo({ installMethod: "homebrew" }));
+      const logSpy = vi.mocked(console.log);
+
+      await program.parseAsync(["node", "test", "update"]);
+
+      const all = logSpy.mock.calls.map((c) => String(c[0])).join("\n");
+      expect(all).toMatch(/brew upgrade ao/);
+      expect(mockSpawn).not.toHaveBeenCalled();
     });
   });
 });
