@@ -5,6 +5,10 @@ name: Release
 # merging it runs `changeset publish` and pushes to npm.
 on:
   workflow_run:
+    # Depends on the workflow named "CI" in .github/workflows/ci.yml — if
+    # you rename that file or change its `name:` field, update this string
+    # too. GitHub matches by name (not filename) and silently no-ops on
+    # mismatch — so a rename here will mean releases never trigger again.
     workflows: [CI]
     types: [completed]
     branches: [main]

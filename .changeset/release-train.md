@@ -2,7 +2,6 @@
 "@aoagents/ao-core": minor
 "@aoagents/ao-cli": minor
 "@aoagents/ao": minor
-"@aoagents/ao-web": minor
 ---
 
 feat(release): weekly release train — channels, onboarding, dashboard banner, cron

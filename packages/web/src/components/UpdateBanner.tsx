@@ -108,7 +108,7 @@ export function UpdateBanner() {
     <div
       role="status"
       aria-live="polite"
-      className="flex w-full items-center justify-between gap-3 border-b border-[var(--color-border-default)] bg-[var(--color-accent-amber-dim)] px-4 py-2 text-[13px] text-[var(--color-text-primary)]"
+      className="flex w-full items-center justify-between gap-3 border-b border-[var(--color-border-default)] bg-[var(--color-accent-amber-dim)] px-4 py-2 text-sm text-[var(--color-text-primary)]"
     >
       <div className="flex flex-1 items-center gap-3">
         <span
@@ -120,15 +120,15 @@ export function UpdateBanner() {
             Update available{channelLabel}: {info.current} → {info.latest}
           </span>
           {phase === "blocked" && errorMessage ? (
-            <span className="text-[12px] text-[var(--color-status-error)]">{errorMessage}</span>
+            <span className="text-xs text-[var(--color-status-error)]">{errorMessage}</span>
           ) : phase === "error" && errorMessage ? (
-            <span className="text-[12px] text-[var(--color-status-error)]">
+            <span className="text-xs text-[var(--color-status-error)]">
               {errorMessage}
             </span>
           ) : phase === "starting" ? (
-            <span className="text-[12px] text-[var(--color-text-secondary)]">Starting…</span>
+            <span className="text-xs text-[var(--color-text-secondary)]">Starting…</span>
           ) : (
-            <span className="text-[12px] text-[var(--color-text-secondary)]">
+            <span className="text-xs text-[var(--color-text-secondary)]">
               Click Update to install. The dashboard will restart.
             </span>
           )}
@@ -139,7 +139,7 @@ export function UpdateBanner() {
           type="button"
           onClick={() => void handleUpdate()}
           disabled={phase === "starting"}
-          className="rounded-sm border border-[var(--color-accent-amber-border)] bg-[var(--color-accent-amber)] px-3 py-1 text-[12px] font-medium text-[var(--color-text-inverse)] hover:bg-[color-mix(in_srgb,var(--color-accent-amber)_85%,black)] disabled:cursor-wait disabled:opacity-60"
+          className="rounded-sm border border-[var(--color-accent-amber-border)] bg-[var(--color-accent-amber)] px-3 py-1 text-xs font-medium text-[var(--color-text-inverse)] hover:bg-[color-mix(in_srgb,var(--color-accent-amber)_85%,black)] disabled:cursor-wait disabled:opacity-60"
         >
           {phase === "starting" ? "Updating…" : "Update"}
         </button>
@@ -147,7 +147,7 @@ export function UpdateBanner() {
           type="button"
           onClick={handleDismiss}
           aria-label="Dismiss"
-          className="rounded-sm px-2 py-1 text-[12px] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover)]"
+          className="rounded-sm px-2 py-1 text-xs text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover)]"
         >
           Dismiss
         </button>
