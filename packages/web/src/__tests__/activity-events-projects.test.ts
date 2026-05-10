@@ -46,6 +46,10 @@ describe("Activity events — project mutation routes", () => {
     getServices.mockReset();
     getServices.mockResolvedValue({
       registry: { get: vi.fn().mockReturnValue(null) },
+      sessionManager: {
+        list: vi.fn().mockResolvedValue([]),
+        kill: vi.fn().mockResolvedValue(undefined),
+      },
     });
     oldGlobalConfig = process.env["AO_GLOBAL_CONFIG"];
     oldConfigPath = process.env["AO_CONFIG_PATH"];
@@ -100,6 +104,7 @@ describe("Activity events — project mutation routes", () => {
       makeRequest("PATCH", `http://localhost:3000/api/projects/${effectiveId}`, {
         agent: "codex",
         runtime: "tmux",
+        someUnknownField: "do-not-record",
       }),
       { params: Promise.resolve({ id: effectiveId }) },
     );
@@ -120,10 +125,19 @@ describe("Activity events — project mutation routes", () => {
     const calls = recorded.mock.calls.filter(
       (c) => (c[0] as { kind: string }).kind === "api.project_updated",
     );
+    expect(calls[0]?.[0]).toEqual(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          changedKeys: ["agent", "runtime"],
+        }),
+      }),
+    );
     for (const [event] of calls) {
       const json = JSON.stringify(event);
       expect(json).not.toContain("codex");
       expect(json).not.toContain('"tmux"');
+      expect(json).not.toContain("someUnknownField");
+      expect(json).not.toContain("do-not-record");
     }
   });
 

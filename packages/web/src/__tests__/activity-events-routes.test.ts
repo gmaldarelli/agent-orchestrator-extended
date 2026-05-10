@@ -23,6 +23,14 @@ vi.mock("@aoagents/ao-core", async () => {
   };
 });
 
+vi.mock("@/lib/observability", async () => {
+  const actual = await vi.importActual("@/lib/observability");
+  return {
+    ...(actual as Record<string, unknown>),
+    recordApiObservation: vi.fn(),
+  };
+});
+
 function makeSession(overrides: Partial<Session> & { id: string }): Session {
   const lifecycle = createInitialCanonicalLifecycle("worker", new Date());
   lifecycle.session.state = "working";
@@ -172,6 +180,7 @@ vi.mock("@/lib/services", () => ({
 }));
 
 import { getServices } from "@/lib/services";
+import { recordApiObservation } from "@/lib/observability";
 import { POST as spawnPOST } from "@/app/api/spawn/route";
 import { POST as killPOST } from "@/app/api/sessions/[id]/kill/route";
 import { POST as sendPOST } from "@/app/api/sessions/[id]/send/route";
@@ -191,6 +200,7 @@ const recorded = vi.mocked(recordActivityEvent);
 
 beforeEach(() => {
   recorded.mockClear();
+  vi.mocked(recordApiObservation).mockClear();
   vi.mocked(getServices).mockClear();
 });
 
@@ -442,6 +452,15 @@ describe("API mutation routes emit activity events (api source)", () => {
           projectId: "my-app",
           sessionId: "backend-7",
           data: expect.objectContaining({ prNumber: 432, reason: "github 500" }),
+        }),
+      );
+      expect(recordApiObservation).toHaveBeenCalledWith(
+        expect.objectContaining({
+          outcome: "failure",
+          statusCode: 500,
+          projectId: "my-app",
+          sessionId: "backend-7",
+          data: expect.objectContaining({ prNumber: 432 }),
         }),
       );
     });
