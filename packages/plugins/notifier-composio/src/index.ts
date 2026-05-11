@@ -37,6 +37,8 @@ interface ComposioToolkit {
   executeAction(params: {
     action: string;
     params: Record<string, unknown>;
+    appName?: string;
+    connectedAccountId?: string;
     entityId?: string;
   }): Promise<{ successful: boolean; data?: unknown; error?: string }>;
 }
@@ -47,9 +49,23 @@ interface ComposioActionsClient {
       actionName: string;
       requestBody: {
         input: Record<string, unknown>;
+        appName?: string;
+        connectedAccountId?: string;
       };
     }) => Promise<{ successful: boolean; data?: unknown; error?: string }>;
   };
+}
+
+interface ComposioEntity {
+  execute(params: {
+    actionName: string;
+    params: Record<string, unknown>;
+    connectedAccountId?: string;
+  }): Promise<{ successful: boolean; data?: unknown; error?: string }>;
+}
+
+interface ComposioEntityClient {
+  getEntity?: (entityId?: string) => ComposioEntity;
 }
 
 function hasExecuteAction(value: unknown): value is ComposioToolkit {
@@ -65,16 +81,38 @@ function hasActionsExecute(value: unknown): value is ComposioActionsClient {
   return actions !== undefined && typeof actions.execute === "function";
 }
 
+function hasEntityExecute(value: unknown): value is ComposioEntityClient {
+  return (
+    value !== null &&
+    typeof value === "object" &&
+    typeof (value as ComposioEntityClient).getEntity === "function"
+  );
+}
+
 function adaptComposioClient(client: unknown): ComposioToolkit {
   if (hasExecuteAction(client)) return client;
 
+  if (hasEntityExecute(client)) {
+    return {
+      executeAction({ action, params, connectedAccountId, entityId }) {
+        return client.getEntity!(entityId ?? "default").execute({
+          actionName: action,
+          params,
+          ...(connectedAccountId ? { connectedAccountId } : {}),
+        });
+      },
+    };
+  }
+
   if (hasActionsExecute(client)) {
     return {
-      executeAction({ action, params }) {
+      executeAction({ action, params, appName, connectedAccountId }) {
         return client.actions!.execute!({
           actionName: action,
           requestBody: {
             input: params,
+            ...(appName ? { appName } : {}),
+            ...(connectedAccountId ? { connectedAccountId } : {}),
           },
         });
       },
@@ -142,6 +180,21 @@ function formatActionsText(event: OrchestratorEvent, actions: NotifyAction[]): s
   return `${base}\n\nActions:\n${actionLines.join("\n")}`;
 }
 
+function normalizeSlackChannel(channel: string | undefined): string | undefined {
+  return channel?.replace(/^#/, "");
+}
+
+function formatComposioError(err: unknown, app: ComposioApp): Error {
+  const message = err instanceof Error ? err.message : String(err);
+  if (message.includes("Could not find a connection")) {
+    return new Error(
+      `[notifier-composio] ${message}. Connect ${app} in Composio, or set notifiers.composio.connectedAccountId / entityId to an active connection.`,
+    );
+  }
+
+  return err instanceof Error ? err : new Error(message);
+}
+
 function buildToolArgs(
   app: ComposioApp,
   text: string,
@@ -150,9 +203,9 @@ function buildToolArgs(
   emailTo?: string,
 ): Record<string, unknown> {
   if (app === "slack") {
-    const args: Record<string, unknown> = { text };
-    if (channelId) args.channel = channelId;
-    else if (channelName) args.channel = channelName;
+    const args: Record<string, unknown> = { markdown_text: text };
+    const channel = channelId ?? normalizeSlackChannel(channelName);
+    if (channel) args.channel = channel;
     return args;
   }
 
@@ -182,6 +235,9 @@ export function create(config?: Record<string, unknown>): Notifier {
       : "slack";
   const channelName = typeof config?.channelName === "string" ? config.channelName : undefined;
   const channelId = typeof config?.channelId === "string" ? config.channelId : undefined;
+  const entityId = typeof config?.entityId === "string" ? config.entityId : undefined;
+  const connectedAccountId =
+    typeof config?.connectedAccountId === "string" ? config.connectedAccountId : undefined;
   const emailTo = typeof config?.emailTo === "string" ? config.emailTo : undefined;
 
   // Internal: allows tests to inject a mock client without mocking composio-core
@@ -243,7 +299,13 @@ export function create(config?: Record<string, unknown>): Notifier {
     const timeoutMs = 30_000;
     const timeoutSignal = AbortSignal.timeout(timeoutMs);
 
-    const actionPromise = composio.executeAction({ action, params });
+    const actionPromise = composio.executeAction({
+      action,
+      params,
+      appName: defaultApp,
+      ...(entityId ? { entityId } : {}),
+      ...(connectedAccountId ? { connectedAccountId } : {}),
+    });
     // Prevent unhandled rejection if the timeout fires and actionPromise later rejects
     actionPromise.catch(() => {});
 
@@ -262,7 +324,9 @@ export function create(config?: Record<string, unknown>): Notifier {
           { once: true },
         );
       }),
-    ]);
+    ]).catch((err: unknown) => {
+      throw formatComposioError(err, defaultApp);
+    });
 
     if (!result.successful) {
       throw new Error(
@@ -301,6 +365,7 @@ export function create(config?: Record<string, unknown>): Notifier {
       if (!composio) return null;
 
       const channel = context?.channel ?? channelId ?? channelName;
+      const slackChannel = normalizeSlackChannel(channel);
       const toolSlug = APP_TOOL_SLUG[defaultApp];
 
       const args: Record<string, unknown> =
@@ -308,7 +373,7 @@ export function create(config?: Record<string, unknown>): Notifier {
           ? { to: emailTo ?? "", subject: GMAIL_SUBJECT, body: message }
           : defaultApp === "discord"
             ? { content: message, ...(channel ? { channel_id: channel } : {}) }
-            : { text: message, ...(channel ? { channel } : {}) };
+            : { markdown_text: message, ...(slackChannel ? { channel: slackChannel } : {}) };
 
       await executeWithTimeout(composio, toolSlug, args);
       return null;

@@ -29,7 +29,7 @@ describe("notifier-composio integration", () => {
   });
 
   describe("config -> tool slug routing", () => {
-    it("slack app routes to SLACK_SEND_MESSAGE with channel", async () => {
+    it("slack app routes to SLACK_SEND_MESSAGE with normalized channel", async () => {
       const notifier = composioPlugin.create({
         composioApiKey: "key",
         defaultApp: "slack",
@@ -42,8 +42,9 @@ describe("notifier-composio integration", () => {
         expect.objectContaining({
           action: "SLACK_SEND_MESSAGE",
           params: expect.objectContaining({
-            channel: "#deploys",
+            channel: "deploys",
           }),
+          appName: "slack",
         }),
       );
     });
@@ -98,7 +99,7 @@ describe("notifier-composio integration", () => {
         makeEvent({ priority: "urgent", type: "ci.failing", sessionId: "app-5" }),
       );
 
-      const text = mockExecuteAction.mock.calls[0][0].params.text as string;
+      const text = mockExecuteAction.mock.calls[0][0].params.markdown_text as string;
       expect(text).toContain("\u{1F6A8}"); // urgent emoji
       expect(text).toContain("ci.failing");
       expect(text).toContain("app-5");
@@ -111,7 +112,7 @@ describe("notifier-composio integration", () => {
       });
       await notifier.notify(makeEvent({ data: { prUrl: "https://github.com/org/repo/pull/99" } }));
 
-      const text = mockExecuteAction.mock.calls[0][0].params.text as string;
+      const text = mockExecuteAction.mock.calls[0][0].params.markdown_text as string;
       expect(text).toContain("https://github.com/org/repo/pull/99");
     });
 
@@ -122,7 +123,7 @@ describe("notifier-composio integration", () => {
       });
       await notifier.notify(makeEvent({ data: { prUrl: 123 } }));
 
-      const text = mockExecuteAction.mock.calls[0][0].params.text as string;
+      const text = mockExecuteAction.mock.calls[0][0].params.markdown_text as string;
       expect(text).not.toContain("PR:");
     });
   });
@@ -139,7 +140,7 @@ describe("notifier-composio integration", () => {
       ];
       await notifier.notifyWithActions!(makeEvent(), actions);
 
-      const text = mockExecuteAction.mock.calls[0][0].params.text as string;
+      const text = mockExecuteAction.mock.calls[0][0].params.markdown_text as string;
       expect(text).toContain("Merge PR: https://github.com/merge");
       expect(text).toContain("- Kill Session");
     });
@@ -155,8 +156,8 @@ describe("notifier-composio integration", () => {
       await notifier.post!("All sessions complete", { channel: "#override" });
 
       const args = mockExecuteAction.mock.calls[0][0].params;
-      expect(args.text).toBe("All sessions complete");
-      expect(args.channel).toBe("#override");
+      expect(args.markdown_text).toBe("All sessions complete");
+      expect(args.channel).toBe("override");
     });
 
     it("returns null", async () => {
