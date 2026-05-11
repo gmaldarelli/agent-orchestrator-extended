@@ -54,9 +54,21 @@ function parseVersion(version: string): { parts: number[]; prerelease: string | 
  * Compare two prerelease identifiers segment-by-segment.
  * Returns -1 if a < b, 0 if equal, 1 if a > b.
  *
- * Per semver: numeric segments compare numerically; non-numeric compare
- * lexically; numeric < non-numeric; longer wins when all shared segments
- * are equal.
+ * Rules:
+ *   - Numeric segments compare numerically (`rc.1` < `rc.2`).
+ *   - Numeric < non-numeric (`0.5.0-1` < `0.5.0-alpha`).
+ *   - Longer prerelease wins when all shared segments are equal
+ *     (`0.5.0-nightly` < `0.5.0-nightly.1`).
+ *   - **Differing non-numeric segments → treat current as older.** Git SHAs
+ *     are uniformly random hex, so a lexical compare (`'f' < '0'`) gives the
+ *     wrong answer ~50% of the time for snapshot tags like `nightly-<sha>`.
+ *     The cache layer always carries the registry's CURRENT dist-tag, so a
+ *     mismatch here means the installed copy is behind by construction —
+ *     return -1 unconditionally for non-numeric differences so the update
+ *     banner surfaces. (Caveat: this would over-fire if a user manually
+ *     installed `0.5.0-beta` when the registry only has `0.5.0-alpha`. AO's
+ *     release pipeline only emits SHA-suffixed nightly prereleases, so the
+ *     scenario doesn't occur in practice.)
  */
 function comparePrereleaseSegments(a: string, b: string): number {
   const aSeg = a.split(".");
@@ -76,7 +88,8 @@ function comparePrereleaseSegments(a: string, b: string): number {
     } else if (aNum !== bNum) {
       return aNum ? -1 : 1; // numeric < non-numeric
     } else if (ax !== bx) {
-      return ax < bx ? -1 : 1;
+      // Both non-numeric and differ. Cannot reliably order — return "older."
+      return -1;
     }
   }
   return 0;

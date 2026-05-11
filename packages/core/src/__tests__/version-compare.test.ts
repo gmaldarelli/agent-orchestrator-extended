@@ -61,11 +61,28 @@ describe("isVersionOutdated (shared core implementation)", () => {
       expect(isVersionOutdated("0.2.2-rc.2", "0.2.2-rc.2")).toBe(false);
     });
 
-    it("orders SHA-suffixed nightlies lexically per segment", () => {
-      // The release pipeline tags nightlies as 0.x.y-nightly-<sha>; we want
-      // a newer SHA (lexically greater) to sort after an older one.
+    it("treats any SHA-suffix difference as outdated (lexical compare would misfire ~50%)", () => {
+      // The release pipeline tags nightlies as 0.x.y-nightly-<sha>. SHAs are
+      // uniformly-random hex, so lexical ordering of `nightly-f00d123` vs
+      // `nightly-0dead01` would give the wrong answer half the time
+      // ('f' > '0' but the second SHA is newer). The cache always carries the
+      // registry's CURRENT dist-tag target, so any SHA mismatch on the same
+      // base means we're behind by construction.
       expect(isVersionOutdated("0.5.0-nightly-abc", "0.5.0-nightly-def")).toBe(true);
-      expect(isVersionOutdated("0.5.0-nightly-def", "0.5.0-nightly-abc")).toBe(false);
+      // Critical: the inverse must also report "outdated" — that's the bug
+      // the user would hit when their leading-hex sorts higher than latest's.
+      expect(isVersionOutdated("0.5.0-nightly-def", "0.5.0-nightly-abc")).toBe(true);
+      expect(isVersionOutdated("0.5.0-nightly-f00d123", "0.5.0-nightly-0dead01")).toBe(true);
+      // Same SHA on both sides → still equal, not outdated.
+      expect(isVersionOutdated("0.5.0-nightly-abc", "0.5.0-nightly-abc")).toBe(false);
+    });
+
+    it("still uses numeric ordering when prerelease segments are numbers", () => {
+      // We didn't break the `rc.1 < rc.2` semver semantics — numeric segments
+      // continue to compare numerically. Only non-numeric differences fall
+      // back to "older."
+      expect(isVersionOutdated("0.2.2-rc.1", "0.2.2-rc.2")).toBe(true);
+      expect(isVersionOutdated("0.2.2-rc.2", "0.2.2-rc.1")).toBe(false);
     });
 
     it("longer prerelease wins when shared segments are equal", () => {

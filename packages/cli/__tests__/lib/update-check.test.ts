@@ -169,11 +169,15 @@ describe("update-check", () => {
       expect(isVersionOutdated("0.2.2-rc.2", "0.2.2-rc.2")).toBe(false);
     });
 
-    it("orders nightly snapshots by SHA-suffix segments", () => {
-      // Real-world canary tag: 0.5.0-nightly-<sha>. We compare segment-by-segment
-      // so newer SHAs (lexically greater) sort after older ones.
+    it("treats any nightly SHA-suffix difference as outdated (lexical order would misfire)", () => {
+      // Real-world canary tag: 0.5.0-nightly-<sha>. SHAs are random hex, so
+      // lexical compare gives the wrong answer ~50% of the time. The cache
+      // always carries the registry's current dist-tag, so any SHA mismatch
+      // on the same base means the installed copy is behind.
       expect(isVersionOutdated("0.5.0-nightly-abc", "0.5.0-nightly-def")).toBe(true);
-      expect(isVersionOutdated("0.5.0-nightly-def", "0.5.0-nightly-abc")).toBe(false);
+      expect(isVersionOutdated("0.5.0-nightly-def", "0.5.0-nightly-abc")).toBe(true);
+      expect(isVersionOutdated("0.5.0-nightly-f00d123", "0.5.0-nightly-0dead01")).toBe(true);
+      expect(isVersionOutdated("0.5.0-nightly-abc", "0.5.0-nightly-abc")).toBe(false);
     });
 
     it("treats missing prerelease segments as older than longer prereleases", () => {
