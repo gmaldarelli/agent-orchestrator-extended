@@ -12,6 +12,7 @@ import {
   type DashboardAttentionZoneMode,
   getAttentionLevel,
   isPRRateLimited,
+  isDashboardSessionTerminated,
 } from "@/lib/types";
 import { AttentionZone } from "./AttentionZone";
 import { DynamicFavicon, countNeedingAttention } from "./DynamicFavicon";
@@ -89,7 +90,7 @@ function DoneCard({
     session.summary ||
     session.id;
   const isMerged = session.pr?.state === "merged" || session.status === "merged";
-  const isTerminated = session.status === "killed" || session.status === "terminated";
+  const isTerminated = isDashboardSessionTerminated(session);
   const canRestore = !NON_RESTORABLE_STATUSES.has(session.status);
   const badgeLabel = isMerged ? "merged" : isTerminated ? "terminated" : "done";
   const badgeClass = `done-card__badge ${isTerminated ? "done-card__badge--terminated" : "done-card__badge--merged"}`;
