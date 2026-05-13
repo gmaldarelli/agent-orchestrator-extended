@@ -35,6 +35,19 @@ export type TransitionSource =
   | "cleanup" // Session cleanup
   | "claim_pr"; // PR claim
 
+const TERMINAL_SESSION_STATES: ReadonlySet<CanonicalSessionState> = new Set([
+  "done",
+  "terminated",
+]);
+
+function clearTerminalMarkersForNonTerminalState(
+  lifecycle: CanonicalSessionLifecycle,
+): void {
+  if (TERMINAL_SESSION_STATES.has(lifecycle.session.state)) return;
+  lifecycle.session.completedAt = null;
+  lifecycle.session.terminatedAt = null;
+}
+
 /**
  * Result of a lifecycle transition attempt.
  */
@@ -106,6 +119,8 @@ export function applyDecisionToLifecycle(
       lifecycle.session.terminatedAt = nowIso;
     }
   }
+
+  clearTerminalMarkersForNonTerminalState(lifecycle);
 }
 
 /**

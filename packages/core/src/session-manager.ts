@@ -108,6 +108,18 @@ const OPENCODE_INTERACTIVE_DISCOVERY_TIMEOUT_MS = 10_000;
 const EXEC_SHELL_OPTION =
   process.platform === "win32" ? ({ shell: true, windowsHide: true } as const) : ({} as const);
 
+const TERMINAL_CANONICAL_SESSION_STATES: ReadonlySet<
+  CanonicalSessionLifecycle["session"]["state"]
+> = new Set(["done", "terminated"]);
+
+function clearTerminalMarkersForNonTerminalState(
+  lifecycle: CanonicalSessionLifecycle,
+): void {
+  if (TERMINAL_CANONICAL_SESSION_STATES.has(lifecycle.session.state)) return;
+  lifecycle.session.completedAt = null;
+  lifecycle.session.terminatedAt = null;
+}
+
 function errorIncludesSessionNotFound(err: unknown): boolean {
   if (!(err instanceof Error)) return false;
   const e = err as Error & { stderr?: string; stdout?: string };
@@ -479,6 +491,7 @@ export function createSessionManager(deps: SessionManagerDeps): OpenCodeSessionM
       }),
     );
     updater(lifecycle);
+    clearTerminalMarkersForNonTerminalState(lifecycle);
     return lifecycle;
   }
 
