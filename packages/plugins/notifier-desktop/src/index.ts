@@ -24,7 +24,6 @@ export const manifest = {
 export { escapeAppleScript } from "@aoagents/ao-core";
 
 type DesktopBackend = "auto" | "ao-app" | "terminal-notifier" | "osascript";
-let nativeNotificationSequence = 0;
 
 interface MacDeliveryOptions {
   backend: DesktopBackend;
@@ -217,9 +216,8 @@ function macAppExecutable(appPath: string): string {
   return join(appPath, "Contents", "MacOS", "ao-notifier");
 }
 
-function nativeNotificationId(event: OrchestratorEvent): string {
-  nativeNotificationSequence += 1;
-  return `${event.id}.${Date.now()}.${process.pid}.${nativeNotificationSequence}`;
+function nativeNotificationId(event: OrchestratorEvent, sequence: number): string {
+  return `${event.id}.${Date.now()}.${process.pid}.${sequence}`;
 }
 
 function nativeThreadId(): string {
@@ -369,6 +367,7 @@ function sendNotification(
     sound: boolean;
     isUrgent: boolean;
     mac: MacDeliveryOptions;
+    notificationId: string;
     openUrl?: string;
     actions?: NativeActionPayload[];
     fallbackContent?: DesktopNotificationContent;
@@ -394,7 +393,7 @@ function sendNotification(
         }
 
         const payload = {
-          notificationId: nativeNotificationId(event),
+          notificationId: options.notificationId,
           threadId: nativeThreadId(),
           title: content.title,
           subtitle: content.subtitle,
@@ -470,6 +469,7 @@ function sendNotification(
 }
 
 export function create(config?: Record<string, unknown>): Notifier {
+  let nativeNotificationSequence = 0;
   const soundEnabled = typeof config?.sound === "boolean" ? config.sound : true;
   const dashboardUrl = typeof config?.dashboardUrl === "string" ? config.dashboardUrl : undefined;
   const backend = parseBackend(config?.backend);
@@ -483,6 +483,10 @@ export function create(config?: Record<string, unknown>): Notifier {
     appPath,
     useTerminalNotifier: hasTerminalNotifier,
   };
+  const nextNativeNotificationId = (event: OrchestratorEvent): string => {
+    nativeNotificationSequence += 1;
+    return nativeNotificationId(event, nativeNotificationSequence);
+  };
 
   return {
     name: "desktop",
@@ -495,6 +499,7 @@ export function create(config?: Record<string, unknown>): Notifier {
         sound,
         isUrgent,
         mac,
+        notificationId: nextNativeNotificationId(event),
         openUrl: primaryOpenUrl(event, dashboardUrl),
       });
     },
@@ -514,6 +519,7 @@ export function create(config?: Record<string, unknown>): Notifier {
         sound,
         isUrgent,
         mac,
+        notificationId: nextNativeNotificationId(event),
         openUrl: primaryOpenUrl(event, dashboardUrl, actions),
         actions: nativeActions,
         fallbackContent,

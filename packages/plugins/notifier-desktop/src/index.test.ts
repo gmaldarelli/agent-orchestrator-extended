@@ -463,6 +463,26 @@ describe("notifier-desktop", () => {
       expect(payload.event).toMatchObject({ id: "evt-native", sessionId: "s-9" });
     });
 
+    it("scopes native notification sequence to each notifier instance", async () => {
+      const first = create({ backend: "ao-app" });
+      const second = create({ backend: "ao-app" });
+
+      await first.notify(makeEvent({ id: "evt-first" }));
+      await second.notify(makeEvent({ id: "evt-second" }));
+
+      const firstEncoded = mockExecFile.mock.calls[0][1][1] as string;
+      const secondEncoded = mockExecFile.mock.calls[1][1][1] as string;
+      const firstPayload = JSON.parse(Buffer.from(firstEncoded, "base64").toString("utf-8")) as {
+        notificationId: string;
+      };
+      const secondPayload = JSON.parse(Buffer.from(secondEncoded, "base64").toString("utf-8")) as {
+        notificationId: string;
+      };
+
+      expect(firstPayload.notificationId).toMatch(/^evt-first\..*\.1$/);
+      expect(secondPayload.notificationId).toMatch(/^evt-second\..*\.1$/);
+    });
+
     it("passes URL actions to AO Notifier.app", async () => {
       const notifier = create({ backend: "ao-app" });
       const actions: NotifyAction[] = [

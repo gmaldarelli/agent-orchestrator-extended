@@ -409,7 +409,9 @@ function appendDiscordField(
 }
 
 function formatDiscordMarkdownLink(label: string, url: string): string {
-  return `[${label.replace(/[\][()]/g, "")}](${url})`;
+  const safeLabel = label.replaceAll("[", "").replaceAll("]", "").replace(/[()]/g, "");
+  const safeUrl = url.replace(/\)/g, "%29");
+  return `[${safeLabel}](${safeUrl})`;
 }
 
 function formatDiscordBranch(data: NotificationDataV3 | null): string | undefined {
@@ -675,7 +677,14 @@ const SLACK_PRIORITY_TONE: Record<EventPriority, SlackTone> = {
 };
 
 function escapeSlackText(value: string): string {
-  return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\*/g, "&#42;")
+    .replace(/_/g, "&#95;")
+    .replace(/~/g, "&#126;")
+    .replace(/`/g, "&#96;");
 }
 
 function formatSlackDate(date: Date): string {
@@ -748,9 +757,9 @@ function buildSlackStatusContext(data: NotificationDataV3 | null): unknown[] {
 
   if (data.ci?.status) {
     const ciEmoji = data.ci.status === "passing" ? ":white_check_mark:" : ":x:";
-    const failedChecks = data.ci.failedChecks?.map((check) => check.name) ?? [];
+    const failedChecks = data.ci.failedChecks?.map((check) => escapeSlackText(check.name)) ?? [];
     const failedText = failedChecks.length > 0 ? ` | Failed: ${failedChecks.join(", ")}` : "";
-    context.push(`${ciEmoji} CI: ${data.ci.status}${failedText}`);
+    context.push(`${ciEmoji} CI: ${escapeSlackText(data.ci.status)}${failedText}`);
   }
 
   if (typeof data.merge?.conflicts === "boolean") {
@@ -766,14 +775,16 @@ function buildSlackStatusContext(data: NotificationDataV3 | null): unknown[] {
   }
 
   if (data.merge?.blockers?.length) {
-    context.push(`:no_entry: Blockers: ${data.merge.blockers.slice(0, 5).join(", ")}`);
+    context.push(
+      `:no_entry: Blockers: ${data.merge.blockers.slice(0, 5).map(escapeSlackText).join(", ")}`,
+    );
   }
 
   if (context.length === 0) return [];
   return [
     {
       type: "context",
-      elements: [{ type: "mrkdwn", text: escapeSlackText(context.join("  •  ")) }],
+      elements: [{ type: "mrkdwn", text: context.join("  •  ") }],
     },
   ];
 }

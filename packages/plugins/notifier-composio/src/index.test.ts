@@ -373,6 +373,49 @@ describe("notifier-composio", () => {
       );
     });
 
+    it("escapes user-controlled Slack mrkdwn characters", async () => {
+      const notifier = create({ composioApiKey: "k" });
+      await notifier.notify(
+        makeEvent({ message: "Fix *bold* _italic_ ~strike~ `code` & <tag> > done" }),
+      );
+
+      const section = getSlackAttachment().blocks.find((block: any) => block.type === "section");
+      expect(section.text.text).toBe(
+        "Fix &#42;bold&#42; &#95;italic&#95; &#126;strike&#126; &#96;code&#96; &amp; &lt;tag&gt; &gt; done",
+      );
+    });
+
+    it("escapes right parentheses in Discord markdown link URLs", async () => {
+      const notifier = create({
+        composioApiKey: "k",
+        defaultApp: "discord",
+        mode: "bot",
+        channelId: "1234567890",
+      });
+      await notifier.notify(
+        makeEvent({
+          data: makeV3Data({
+            subject: {
+              session: { id: "app-1", projectId: "my-project" },
+              pr: {
+                number: 1,
+                title: "Parser test",
+                url: "https://github.com/org/repo/pull/1?a=(test)",
+              },
+            },
+          }),
+        }),
+      );
+
+      const callArgs = mockToolsExecute.mock.calls[0][1];
+      const pullRequestField = callArgs.arguments.embeds[0].fields.find(
+        (field: any) => field.name === "Pull Request",
+      );
+      expect(pullRequestField.value).toContain(
+        "[#1](https://github.com/org/repo/pull/1?a=(test%29)",
+      );
+    });
+
     it("includes subject.pr.url when present in v3 data", async () => {
       const notifier = create({ composioApiKey: "k" });
       await notifier.notify(

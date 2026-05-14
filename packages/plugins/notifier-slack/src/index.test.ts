@@ -208,6 +208,22 @@ describe("notifier-slack", () => {
       expect(section.text.text).toBe("CI is green");
     });
 
+    it("escapes user-controlled Slack mrkdwn characters", async () => {
+      const fetchMock = mockFetchOk();
+      vi.stubGlobal("fetch", fetchMock);
+
+      const notifier = create({ webhookUrl: "https://hooks.slack.com/test" });
+      await notifier.notify(
+        makeEvent({ message: "Fix *bold* _italic_ ~strike~ `code` & <tag> > done" }),
+      );
+
+      const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+      const section = getSlackBlocks(body)[1];
+      expect(section.text.text).toBe(
+        "Fix &#42;bold&#42; &#95;italic&#95; &#126;strike&#126; &#96;code&#96; &amp; &lt;tag&gt; &gt; done",
+      );
+    });
+
     it("includes context block with project and priority", async () => {
       const fetchMock = mockFetchOk();
       vi.stubGlobal("fetch", fetchMock);
