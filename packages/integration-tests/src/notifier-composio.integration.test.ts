@@ -12,6 +12,26 @@ import { makeEvent } from "./helpers/event-factory.js";
 const mockToolsExecute = vi.fn().mockResolvedValue({ successful: true });
 const mockClient = { tools: { execute: mockToolsExecute } };
 
+function makeV3Data(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    schemaVersion: 3,
+    subject: { session: { id: "app-1", projectId: "my-project" } },
+    ...overrides,
+  };
+}
+
+function getToolArgs(): Record<string, any> {
+  return mockToolsExecute.mock.calls[0][1].arguments;
+}
+
+function getSlackAttachment(): Record<string, any> {
+  return JSON.parse(String(getToolArgs().attachments))[0];
+}
+
+function getSlackActions(): Array<Record<string, any>> {
+  return getSlackAttachment().blocks.find((block: any) => block.type === "actions")?.elements ?? [];
+}
+
 describe("notifier-composio integration", () => {
   const originalEnv = process.env.COMPOSIO_API_KEY;
 
@@ -75,7 +95,6 @@ describe("notifier-composio integration", () => {
         defaultApp: "discord",
         mode: "webhook",
         webhookUrl: "https://discord.com/api/webhooks/1234567890/webhook-token",
-        connectedAccountId: "ca_should_be_ignored",
         _clientOverride: mockClient,
       });
       await notifier.notify(makeEvent());
@@ -109,10 +128,13 @@ describe("notifier-composio integration", () => {
           version: "20260506_01",
           arguments: expect.objectContaining({
             recipient_email: "admin@example.com",
-            subject: "Agent Orchestrator Notification",
+            subject: "[AO] Session Spawned: app-1",
+            is_html: true,
           }),
         }),
       );
+      expect(getToolArgs().body).toContain("<!doctype html>");
+      expect(getToolArgs().body).toContain("Session app-1 spawned successfully");
     });
   });
 
@@ -126,10 +148,11 @@ describe("notifier-composio integration", () => {
         makeEvent({ priority: "urgent", type: "ci.failing", sessionId: "app-5" }),
       );
 
-      const text = mockToolsExecute.mock.calls[0][1].arguments.markdown_text as string;
-      expect(text).toContain("\u{1F6A8}");
-      expect(text).toContain("ci.failing");
-      expect(text).toContain("app-5");
+      const attachment = getSlackAttachment();
+      expect(attachment.fallback).toContain("Urgent");
+      expect(attachment.fallback).toContain("CI failing");
+      expect(attachment.blocks[0].text.text).toContain(":rotating_light:");
+      expect(attachment.blocks[2].fields[1].text).toContain("app-5");
     });
 
     it("includes PR URL when present in event data", async () => {
@@ -137,10 +160,25 @@ describe("notifier-composio integration", () => {
         composioApiKey: "key",
         _clientOverride: mockClient,
       });
-      await notifier.notify(makeEvent({ data: { prUrl: "https://github.com/org/repo/pull/99" } }));
+      await notifier.notify(
+        makeEvent({
+          data: makeV3Data({
+            subject: {
+              session: { id: "app-1", projectId: "my-project" },
+              pr: { number: 99, url: "https://github.com/org/repo/pull/99" },
+            },
+          }),
+        }),
+      );
 
-      const text = mockToolsExecute.mock.calls[0][1].arguments.markdown_text as string;
-      expect(text).toContain("https://github.com/org/repo/pull/99");
+      expect(getSlackActions()).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            text: expect.objectContaining({ text: "View PR" }),
+            url: "https://github.com/org/repo/pull/99",
+          }),
+        ]),
+      );
     });
 
     it("omits PR URL when not a string", async () => {
@@ -167,9 +205,18 @@ describe("notifier-composio integration", () => {
       ];
       await notifier.notifyWithActions!(makeEvent(), actions);
 
-      const text = mockToolsExecute.mock.calls[0][1].arguments.markdown_text as string;
-      expect(text).toContain("Merge PR: https://github.com/merge");
-      expect(text).toContain("- Kill Session");
+      expect(getSlackActions()).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            text: expect.objectContaining({ text: "Merge PR" }),
+            url: "https://github.com/merge",
+          }),
+          expect.objectContaining({
+            text: expect.objectContaining({ text: "Kill Session" }),
+            value: "/api/kill",
+          }),
+        ]),
+      );
     });
   });
 
