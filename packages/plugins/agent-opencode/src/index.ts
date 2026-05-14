@@ -8,6 +8,7 @@ import {
   recordTerminalActivity,
   asValidOpenCodeSessionId,
   isWindows,
+  PROCESS_PROBE_INDETERMINATE,
   getCachedOpenCodeSessionList,
   getOpenCodeChildEnv,
   ensureOpenCodeTmpDir,
@@ -300,7 +301,7 @@ function createOpenCodeAgent(): Agent {
       const exitedAt = new Date();
       if (!session.runtimeHandle) return { state: "exited", timestamp: exitedAt };
       const running = await this.isProcessRunning(session.runtimeHandle);
-      if (running === "indeterminate") return null;
+      if (running === PROCESS_PROBE_INDETERMINATE) return null;
       if (!running) return { state: "exited", timestamp: exitedAt };
 
       // 1. Check AO activity JSONL first (written by recordActivity from terminal output).
@@ -363,7 +364,7 @@ function createOpenCodeAgent(): Agent {
           const { stdout: psOut } = await execFileAsync("ps", ["-eo", "pid,tty,args"], {
             timeout: 30_000,
           });
-          if (!psOut) return "indeterminate";
+          if (!psOut) return PROCESS_PROBE_INDETERMINATE;
           const ttySet = new Set(ttys.map((t) => t.replace(/^\/dev\//, "")));
           const processRe = /(?:^|\/)opencode(?:\s|$)/;
           for (const line of psOut.split("\n")) {
@@ -393,7 +394,7 @@ function createOpenCodeAgent(): Agent {
 
         return false;
       } catch {
-        return "indeterminate";
+        return PROCESS_PROBE_INDETERMINATE;
       }
     },
 

@@ -42,6 +42,7 @@ import {
   type ReviewComment,
   type ReviewSummary,
   type ProcessProbeResult,
+  isProcessProbeIndeterminate,
 } from "./types.js";
 import {
   buildLifecycleMetadataPatch,
@@ -403,7 +404,7 @@ interface ProbeResult {
 }
 
 function processProbeResultToProbeResult(result: ProcessProbeResult): ProbeResult {
-  if (result === "indeterminate") {
+  if (isProcessProbeIndeterminate(result)) {
     return { state: "unknown", failed: false, indeterminate: true };
   }
   return { state: result ? "alive" : "dead", failed: false };

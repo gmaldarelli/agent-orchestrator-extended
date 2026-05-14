@@ -459,7 +459,15 @@ export interface AttachInfo {
  * Knows how to launch, detect activity, and extract session info.
  */
 
-export type ProcessProbeResult = boolean | "indeterminate";
+export const PROCESS_PROBE_INDETERMINATE = "indeterminate" as const;
+
+export type ProcessProbeResult = boolean | typeof PROCESS_PROBE_INDETERMINATE;
+
+export function isProcessProbeIndeterminate(
+  result: ProcessProbeResult,
+): result is typeof PROCESS_PROBE_INDETERMINATE {
+  return result === PROCESS_PROBE_INDETERMINATE;
+}
 
 export interface Agent {
   readonly name: string;

@@ -9,6 +9,7 @@ import {
   getActivityFallbackState,
   recordTerminalActivity,
   isWindows,
+  PROCESS_PROBE_INDETERMINATE,
   type Agent,
   type AgentSessionInfo,
   type AgentLaunchConfig,
@@ -600,7 +601,7 @@ function createCodexAgent(): Agent {
       const exitedAt = new Date();
       if (!session.runtimeHandle) return { state: "exited", timestamp: exitedAt };
       const running = await this.isProcessRunning(session.runtimeHandle);
-      if (running === "indeterminate") return null;
+      if (running === PROCESS_PROBE_INDETERMINATE) return null;
       if (!running) return { state: "exited", timestamp: exitedAt };
 
       if (!session.workspacePath) return null;
@@ -722,7 +723,7 @@ function createCodexAgent(): Agent {
           const { stdout: psOut } = await execFileAsync("ps", ["-eo", "pid,tty,args"], {
             timeout: 30_000,
           });
-          if (!psOut) return "indeterminate";
+          if (!psOut) return PROCESS_PROBE_INDETERMINATE;
           const ttySet = new Set(ttys.map((t) => t.replace(/^\/dev\//, "")));
           const processRe = /(?:^|\/)codex(?:\s|$)/;
           for (const line of psOut.split("\n")) {
@@ -752,7 +753,7 @@ function createCodexAgent(): Agent {
 
         return false;
       } catch {
-        return "indeterminate";
+        return PROCESS_PROBE_INDETERMINATE;
       }
     },
 

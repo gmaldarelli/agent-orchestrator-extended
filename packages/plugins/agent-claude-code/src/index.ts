@@ -3,6 +3,7 @@ import {
   readLastJsonlEntry,
   normalizeAgentPermissionMode,
   isWindows,
+  PROCESS_PROBE_INDETERMINATE,
   DEFAULT_READY_THRESHOLD_MS,
   DEFAULT_ACTIVE_WINDOW_MS,
   type Agent,
@@ -617,7 +618,7 @@ function extractCost(lines: JsonlLine[]): CostEstimate | undefined {
  * with many processes. The cache ensures `ps` is called at most once per TTL
  * window regardless of how many sessions are being enriched.
  */
-type ProcessListResult = string | "indeterminate";
+type ProcessListResult = string | typeof PROCESS_PROBE_INDETERMINATE;
 let psCache: {
   output: ProcessListResult;
   timestamp: number;
@@ -650,15 +651,15 @@ async function getCachedProcessList(): Promise<ProcessListResult> {
   })
     .then(({ stdout }) => {
       if (psCache?.promise === promise) {
-        psCache = { output: stdout || "indeterminate", timestamp: Date.now() };
+        psCache = { output: stdout || PROCESS_PROBE_INDETERMINATE, timestamp: Date.now() };
       }
-      return stdout || "indeterminate";
+      return stdout || PROCESS_PROBE_INDETERMINATE;
     })
     .catch(() => {
       if (psCache?.promise === promise) {
-        psCache = { output: "indeterminate", timestamp: Date.now() };
+        psCache = { output: PROCESS_PROBE_INDETERMINATE, timestamp: Date.now() };
       }
-      return "indeterminate" as const;
+      return PROCESS_PROBE_INDETERMINATE;
     });
 
   // Store the in-flight promise so concurrent callers share it
@@ -671,7 +672,9 @@ async function getCachedProcessList(): Promise<ProcessListResult> {
  * Check if a process named "claude" is running in the given runtime handle's context.
  * Uses ps to find processes by TTY (for tmux) or by PID.
  */
-async function findClaudeProcess(handle: RuntimeHandle): Promise<number | null | "indeterminate"> {
+async function findClaudeProcess(
+  handle: RuntimeHandle,
+): Promise<number | null | typeof PROCESS_PROBE_INDETERMINATE> {
   try {
     // For tmux runtime, get the pane TTY and find claude on it
     if (handle.runtimeName === "tmux" && handle.id) {
@@ -690,7 +693,7 @@ async function findClaudeProcess(handle: RuntimeHandle): Promise<number | null |
       if (ttys.length === 0) return null;
 
       const psOut = await getCachedProcessList();
-      if (psOut === "indeterminate") return "indeterminate";
+      if (psOut === PROCESS_PROBE_INDETERMINATE) return PROCESS_PROBE_INDETERMINATE;
 
       const ttySet = new Set(ttys.map((t) => t.replace(/^\/dev\//, "")));
       // Match "claude" as a word boundary — prevents false positives on
@@ -726,7 +729,7 @@ async function findClaudeProcess(handle: RuntimeHandle): Promise<number | null |
     // No reliable way to identify the correct process for this session
     return null;
   } catch {
-    return "indeterminate";
+    return PROCESS_PROBE_INDETERMINATE;
   }
 }
 
@@ -946,7 +949,7 @@ function createClaudeCodeAgent(): Agent {
 
     async isProcessRunning(handle: RuntimeHandle): Promise<ProcessProbeResult> {
       const pid = await findClaudeProcess(handle);
-      if (pid === "indeterminate") return "indeterminate";
+      if (pid === PROCESS_PROBE_INDETERMINATE) return PROCESS_PROBE_INDETERMINATE;
       return pid !== null;
     },
 
@@ -960,7 +963,7 @@ function createClaudeCodeAgent(): Agent {
       const exitedAt = new Date();
       if (!session.runtimeHandle) return { state: "exited", timestamp: exitedAt };
       const running = await this.isProcessRunning(session.runtimeHandle);
-      if (running === "indeterminate") return null;
+      if (running === PROCESS_PROBE_INDETERMINATE) return null;
       if (!running) return { state: "exited", timestamp: exitedAt };
 
       // Process is running - check JSONL session file for activity
