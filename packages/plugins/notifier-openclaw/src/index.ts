@@ -231,8 +231,28 @@ function truncate(value: string, maxLength = 140): string {
   return value.length > maxLength ? `${value.slice(0, maxLength - 3)}...` : value;
 }
 
+function escapeMarkdownLinkLabel(value: string): string {
+  return value
+    .replace(/\\/g, "\\\\")
+    .replace(/\[/g, "\\[")
+    .replace(/\]/g, "\\]")
+    .replace(/\(/g, "\\(")
+    .replace(/\)/g, "\\)")
+    .replace(/\*/g, "\\*")
+    .replace(/_/g, "\\_")
+    .replace(/~/g, "\\~")
+    .replace(/`/g, "\\`");
+}
+
+function escapeMarkdownLinkUrl(value: string): string {
+  return value.replace(/[()\\\s<>]/g, (char) => {
+    const code = char.codePointAt(0) ?? 0;
+    return `%${code.toString(16).toUpperCase().padStart(2, "0")}`;
+  });
+}
+
 function formatLink(label: string, url: string): string {
-  return `[${label}](${url})`;
+  return `[${escapeMarkdownLinkLabel(label)}](${escapeMarkdownLinkUrl(url)})`;
 }
 
 function pushSection(lines: string[], title: string, items: string[]): void {

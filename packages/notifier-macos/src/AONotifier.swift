@@ -43,6 +43,16 @@ final class NotificationResponseDelegate: NSObject, UNUserNotificationCenterDele
     let actionIdentifier = response.actionIdentifier
 
     if actionIdentifier == UNNotificationDefaultActionIdentifier {
+      if let defaultOpenUrl = userInfo["defaultOpenUrl"] as? String {
+        openUrl(defaultOpenUrl)
+        completionHandler()
+        return
+      }
+      if let actionUrls = userInfo["actionUrls"] as? [String: String],
+        let fallbackUrl = actionUrls.sorted(by: { $0.key < $1.key }).first?.value
+      {
+        openUrl(fallbackUrl)
+      }
       completionHandler()
       return
     }
@@ -113,7 +123,7 @@ func postCallback(_ rawUrl: String?) {
   _ = semaphore.wait(timeout: .now() + 10)
 }
 
-func waitForSettings(_ center: UNUserNotificationCenter) -> UNNotificationSettings {
+func waitForSettings(_ center: UNUserNotificationCenter) -> UNNotificationSettings? {
   let semaphore = DispatchSemaphore(value: 0)
   var resolved: UNNotificationSettings?
   center.getNotificationSettings { settings in
@@ -121,7 +131,7 @@ func waitForSettings(_ center: UNUserNotificationCenter) -> UNNotificationSettin
     semaphore.signal()
   }
   _ = semaphore.wait(timeout: .now() + 5)
-  return resolved!
+  return resolved
 }
 
 func notificationSettingStatus(_ setting: UNNotificationSetting) -> String {
@@ -138,7 +148,9 @@ func notificationSettingStatus(_ setting: UNNotificationSetting) -> String {
 }
 
 func permissionStatus() -> String {
-  let settings = waitForSettings(UNUserNotificationCenter.current())
+  guard let settings = waitForSettings(UNUserNotificationCenter.current()) else {
+    return "unknown"
+  }
   switch settings.authorizationStatus {
   case .authorized:
     return "authorized"
@@ -335,7 +347,7 @@ func runCommand(_ args: [String]) -> Int32 {
       let settings = waitForSettings(center)
       printJson([
         ("status", permissionStatus()),
-        ("badge", notificationSettingStatus(settings.badgeSetting)),
+        ("badge", settings.map { notificationSettingStatus($0.badgeSetting) } ?? "unknown"),
         ("bundleId", bundleId),
       ])
       return 0
@@ -354,7 +366,7 @@ func runCommand(_ args: [String]) -> Int32 {
       let settings = waitForSettings(center)
       printJson([
         ("status", granted ? "authorized" : permissionStatus()),
-        ("badge", notificationSettingStatus(settings.badgeSetting)),
+        ("badge", settings.map { notificationSettingStatus($0.badgeSetting) } ?? "unknown"),
         ("bundleId", bundleId),
       ])
       return granted ? 0 : 2

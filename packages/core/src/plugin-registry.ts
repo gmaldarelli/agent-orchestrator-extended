@@ -79,6 +79,19 @@ function matchesNotifierPlugin(
   return hasExplicitPlugin ? configuredPlugin === pluginName : notifierId === pluginName;
 }
 
+function hasExplicitConflictingNotifierEntry(
+  pluginName: string,
+  config: OrchestratorConfig,
+): boolean {
+  if (!Object.prototype.hasOwnProperty.call(config.notifiers ?? {}, pluginName)) return false;
+  const exactMatch = config.notifiers?.[pluginName];
+  return (
+    !exactMatch ||
+    typeof exactMatch !== "object" ||
+    !matchesNotifierPlugin(pluginName, pluginName, exactMatch)
+  );
+}
+
 function collectNotifierRegistrations(
   pluginName: string,
   config: OrchestratorConfig,
@@ -110,7 +123,11 @@ function collectNotifierRegistrations(
     }
   }
 
-  if (orderedMatches.size === 0 && isReferencedByName) {
+  if (
+    orderedMatches.size === 0 &&
+    isReferencedByName &&
+    !hasExplicitConflictingNotifierEntry(pluginName, config)
+  ) {
     orderedMatches.set(pluginName, {});
   }
 
@@ -418,6 +435,7 @@ export function createPluginRegistry(): PluginRegistry {
     const registrations = collectNotifierRegistrations(manifest.name, config, isExternalLoad);
 
     if (registrations.length === 0) {
+      if (hasExplicitConflictingNotifierEntry(manifest.name, config)) return;
       registerInstance(manifest.slot, manifest.name, manifest, plugin.create(undefined));
       return;
     }

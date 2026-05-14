@@ -383,6 +383,33 @@ describe("loadBuiltins", () => {
     });
   });
 
+  it("does not create an implicit notifier registration over a conflicting explicit entry", async () => {
+    const registry = createPluginRegistry();
+    const fakeDashboard = makePlugin("notifier", "dashboard");
+    const cfg = makeOrchestratorConfig({
+      defaults: {
+        runtime: "tmux",
+        agent: "codex",
+        workspace: "worktree",
+        notifiers: ["dashboard"],
+      },
+      notifiers: {
+        dashboard: {
+          plugin: "webhook",
+          url: "https://hooks.example.com/dashboard",
+        },
+      },
+    });
+
+    await registry.loadBuiltins(cfg, async (pkg: string) => {
+      if (pkg === "@aoagents/ao-plugin-notifier-dashboard") return fakeDashboard;
+      throw new Error(`Not found: ${pkg}`);
+    });
+
+    expect(fakeDashboard.create).not.toHaveBeenCalled();
+    expect(registry.get("notifier", "dashboard")).toBeNull();
+  });
+
   it("strips package loading metadata from notifier config", async () => {
     const registry = createPluginRegistry();
     const fakeWebhook = makePlugin("notifier", "webhook");
@@ -462,7 +489,7 @@ describe("loadBuiltins", () => {
       throw new Error(`Not found: ${pkg}`);
     });
 
-    expect(fakeOpenClaw.create).toHaveBeenCalledWith(undefined);
+    expect(fakeOpenClaw.create).not.toHaveBeenCalled();
     expect(fakeWebhook.create).toHaveBeenCalledWith({
       url: "http://127.0.0.1:8787/hook",
       retries: 3,

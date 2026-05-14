@@ -158,6 +158,25 @@ describe("notifier-openclaw", () => {
     expect(body.message).toContain("- [Acknowledge](http://localhost:3000/api/ack)");
   });
 
+  it("escapes markdown-sensitive labels and URLs in links", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const notifier = create({ token: "tok" });
+    const actions: NotifyAction[] = [
+      {
+        label: "Open [prod] (now) *please*",
+        url: "https://github.com/org/repo/pull/1?a=(test)",
+      },
+    ];
+    await notifier.notifyWithActions!(makeEvent(), actions);
+
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(body.message).toContain(
+      "- [Open \\[prod\\] \\(now\\) \\*please\\*](https://github.com/org/repo/pull/1?a=%28test%29)",
+    );
+  });
+
   it("formats v3 CI notifications as a compact OpenClaw brief", async () => {
     const fetchMock = vi.fn().mockResolvedValue({ ok: true });
     vi.stubGlobal("fetch", fetchMock);
