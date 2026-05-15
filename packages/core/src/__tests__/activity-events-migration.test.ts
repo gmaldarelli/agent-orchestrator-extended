@@ -2,12 +2,21 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { execSync } from "node:child_process";
 import { migrateStorage } from "../migration/storage-v2.js";
 import { recordActivityEvent } from "../activity-events.js";
 
 vi.mock("../activity-events.js", () => ({
   recordActivityEvent: vi.fn(),
 }));
+
+vi.mock("node:child_process", async (importOriginal) => {
+  const actual = await importOriginal();
+  return {
+    ...(actual as typeof import("node:child_process")),
+    execSync: vi.fn(),
+  };
+});
 
 function createTempDir(): string {
   const dir = join(
@@ -29,6 +38,7 @@ describe("activity events: storage migration", () => {
     configPath = join(aoBaseDir, "config.yaml");
     mkdirSync(aoBaseDir, { recursive: true });
     vi.mocked(recordActivityEvent).mockClear();
+    vi.mocked(execSync).mockReturnValue("");
   });
 
   afterEach(() => {
@@ -131,11 +141,34 @@ describe("activity events: storage migration", () => {
   });
 
   it("emits migration.blocked when active sessions are detected", async () => {
-    // Active-session detection requires the tmux binary; simulate by setting
-    // PATH to nothing so detectActiveSessions returns []. Instead, exercise
-    // the throw path by providing a custom hashDir AND mocking detectActiveSessions
-    // is not possible without restructure — assert at minimum that no migration.blocked
-    // event fires when there are zero active sessions (the negative case).
+    vi.mocked(execSync).mockReturnValue("ao-1\nabcdef012345-worker-7\nunrelated\n");
+
+    writeFileSync(
+      configPath,
+      "projects:\n  myproject:\n    path: /tmp/x\n    storageKey: aaaaaa000000\n    defaultBranch: main\n",
+    );
+
+    await expect(migrateStorage({
+      aoBaseDir,
+      globalConfigPath: configPath,
+      log: () => {},
+    })).rejects.toThrow(/Found 2 active AO tmux session/);
+
+    const calls = vi.mocked(recordActivityEvent).mock.calls.map((c) => c[0]);
+    const blocked = calls.find((c) => c.kind === "migration.blocked");
+    expect(blocked).toBeDefined();
+    expect(blocked?.source).toBe("migration");
+    expect(blocked?.level).toBe("warn");
+    expect(blocked?.summary).toBe("migration blocked by 2 active session(s)");
+    expect(blocked?.data).toMatchObject({
+      activeSessionCount: 2,
+      sample: ["ao-1", "abcdef012345-worker-7"],
+    });
+  });
+
+  it("does not emit migration.blocked when force skips active-session detection", async () => {
+    vi.mocked(execSync).mockReturnValue("ao-1\n");
+
     const hashDir = join(aoBaseDir, "aaaaaa000000-myproject");
     mkdirSync(join(hashDir, "sessions"), { recursive: true });
     writeFileSync(
