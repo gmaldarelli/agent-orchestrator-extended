@@ -227,6 +227,23 @@ describe("SessionBroadcaster", () => {
       expect(callback).not.toHaveBeenCalled();
     });
 
+    it("does not warn for aborted fetches after shutdown starts", async () => {
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      mockFetch.mockRejectedValueOnce(new Error("This operation was aborted"));
+
+      const callback = vi.fn();
+      broadcaster.subscribe(callback);
+      broadcaster.shutdown();
+      await vi.advanceTimersByTimeAsync(10);
+
+      expect(callback).not.toHaveBeenCalled();
+      expect(warnSpy).not.toHaveBeenCalledWith(
+        "[SessionBroadcaster] fetchSnapshot error:",
+        "This operation was aborted",
+      );
+      warnSpy.mockRestore();
+    });
+
     it("returns null on non-OK response", async () => {
       mockFetch.mockResolvedValueOnce({ ok: false, status: 500 });
 
@@ -370,5 +387,29 @@ describe("TerminalManager.open — re-attach skipped when tmux session is gone (
     // Re-attach happened: ptySpawn called a second time, exit not yet notified.
     expect(mockPtySpawn).toHaveBeenCalledTimes(2);
     expect(exitCb).not.toHaveBeenCalled();
+  });
+
+  it("detaches PTYs and reports code 0 during manager shutdown", async () => {
+    const pty = {
+      onData: vi.fn(),
+      onExit: vi.fn((cb: (evt: { exitCode: number }) => Promise<void> | void) => {
+        capturedOnExit = cb;
+      }),
+      write: vi.fn(),
+      resize: vi.fn(),
+      kill: vi.fn(),
+    };
+    mockPtySpawn.mockImplementationOnce(() => pty);
+
+    const mgr = new TerminalManager("/usr/bin/tmux");
+    const exitCb = vi.fn();
+    mgr.subscribe("ao-177", undefined, vi.fn(), exitCb);
+
+    mgr.shutdown();
+    await capturedOnExit!({ exitCode: 1 });
+
+    expect(pty.write).toHaveBeenCalledWith("\x02d");
+    expect(mockTmuxHasSession).not.toHaveBeenCalled();
+    expect(exitCb).toHaveBeenCalledWith(0);
   });
 });

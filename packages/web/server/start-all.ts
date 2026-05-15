@@ -23,10 +23,33 @@ const __dirname = dirname(__filename);
 const pkgRoot = resolve(__dirname, "..");
 
 const children: ChildProcess[] = [];
+const exitedChildren = new WeakSet<ChildProcess>();
 markDaemonShutdownHandlerInstalled();
+
+const DEFAULT_SHUTDOWN_GRACE_MS = 15_000;
 
 function log(label: string, msg: string): void {
   process.stdout.write(`[${label}] ${msg}\n`);
+}
+
+function warn(label: string, msg: string): void {
+  process.stderr.write(`[${label}] warn: ${msg}\n`);
+}
+
+function getShutdownGraceMs(): number {
+  const raw = process.env["AO_SHUTDOWN_GRACE_MS"];
+  if (!raw) return DEFAULT_SHUTDOWN_GRACE_MS;
+
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    warn(
+      "start-all",
+      `invalid AO_SHUTDOWN_GRACE_MS=${JSON.stringify(raw)}, using ${DEFAULT_SHUTDOWN_GRACE_MS}ms`,
+    );
+    return DEFAULT_SHUTDOWN_GRACE_MS;
+  }
+
+  return parsed;
 }
 
 function spawnProcess(
@@ -60,6 +83,7 @@ function spawnProcess(
     });
 
     child.on("exit", (code) => {
+      exitedChildren.add(child);
       log(label, `exited with code ${code}`);
       if (!shuttingDown && opts?.restart && code !== 0 && restarts < maxRestarts) {
         restarts++;
@@ -129,24 +153,44 @@ function cleanup(): void {
   if (shuttingDown) return;
   shuttingDown = true;
 
-  let alive = children.length;
+  const activeChildren = children.filter((child) => !exitedChildren.has(child));
+  let alive = activeChildren.length;
   if (alive === 0) {
     process.exit(0);
     return;
   }
 
-  // Force exit after 5s if children don't exit cleanly
+  const shutdownGraceMs = getShutdownGraceMs();
+  const startedAt = Date.now();
+
+  // Safety fallback: after the grace period, force-kill any child process
+  // trees that are still alive and exit successfully. The operator intent was
+  // shutdown; this path prevents orphans rather than indicating command failure.
   const forceTimer = setTimeout(() => {
-    log("start-all", "Children did not exit in time, forcing shutdown");
-    process.exit(1);
-  }, 5000);
+    const remaining = activeChildren.filter((child) => !exitedChildren.has(child));
+    const labels = remaining.map((child) => `${child.pid ?? "unknown"}`).join(", ");
+    warn(
+      "start-all",
+      `shutdown grace period (${shutdownGraceMs}ms) elapsed; force-killing remaining child process trees (${labels || "unknown"}) as a safety fallback`,
+    );
+    for (const child of remaining) {
+      const pid = child.pid;
+      if (pid) {
+        void killProcessTree(pid, "SIGKILL");
+      } else {
+        child.kill("SIGKILL");
+      }
+    }
+    process.exit(0);
+  }, shutdownGraceMs);
   forceTimer.unref();
 
-  for (const child of children) {
+  for (const child of activeChildren) {
     child.on("exit", () => {
       alive--;
       if (alive <= 0) {
         clearTimeout(forceTimer);
+        log("start-all", `all children shut down cleanly in ${Date.now() - startedAt}ms`);
         process.exit(0);
       }
     });

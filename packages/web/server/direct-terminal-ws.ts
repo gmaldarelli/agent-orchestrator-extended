@@ -5,13 +5,18 @@
 
 import { createServer, type Server } from "node:http";
 import type { WebSocketServer } from "ws";
+import { isWindows } from "@aoagents/ao-core";
 import { findTmux } from "./tmux-utils.js";
 import { createMuxWebSocket } from "./mux-websocket.js";
 
 export interface DirectTerminalServer {
   server: Server;
-  shutdown: () => void;
+  shutdown: (drainMs?: number) => void;
 }
+
+type MuxWebSocketServer = WebSocketServer & {
+  shutdownMuxResources?: () => void;
+};
 
 /**
  * Create the direct terminal WebSocket server.
@@ -20,7 +25,7 @@ export interface DirectTerminalServer {
 export function createDirectTerminalServer(tmuxPath?: string | null): DirectTerminalServer {
   const TMUX = tmuxPath ?? findTmux();
 
-  let muxWss: WebSocketServer | null = null;
+  let muxWss: MuxWebSocketServer | null = null;
 
   const metrics = {
     totalConnections: 0,
@@ -65,22 +70,31 @@ export function createDirectTerminalServer(tmuxPath?: string | null): DirectTerm
     const pathname = new URL(request.url ?? "/", "ws://localhost").pathname;
 
     if (pathname === "/mux" && muxWss) {
-      muxWss.handleUpgrade(request, socket, head, (ws) => {
-        muxWss!.emit("connection", ws, request);
+      const activeMuxWss = muxWss;
+      activeMuxWss.handleUpgrade(request, socket, head, (ws) => {
+        activeMuxWss.emit("connection", ws, request);
       });
     } else {
       socket.destroy();
     }
   });
 
-  function shutdown() {
-    // Terminate all connected mux clients — this triggers their 'close' events
-    // which unsubscribe terminal callbacks and kill PTY processes.
-    if (muxWss) {
+  function shutdown(drainMs = 0) {
+    muxWss?.shutdownMuxResources?.();
+
+    const closeMuxClients = () => {
+      if (!muxWss) return;
       for (const client of muxWss.clients) {
-        client.terminate();
+        client.close(1001, "server shutdown");
       }
       muxWss.close();
+    };
+
+    if (drainMs > 0) {
+      const drainTimer = setTimeout(closeMuxClients, drainMs);
+      drainTimer.unref();
+    } else {
+      closeMuxClients();
     }
     server.close();
   }
@@ -102,7 +116,7 @@ if (isMainModule) {
   const TMUX = findTmux();
   if (TMUX) {
     console.log(`[DirectTerminal] Using tmux: ${TMUX}`);
-  } else if (process.platform === "win32") {
+  } else if (isWindows()) {
     console.log(`[DirectTerminal] Windows mode — using named pipe relay to PTY hosts`);
   } else {
     console.log(`[DirectTerminal] No tmux available — terminal relay may be limited`);
@@ -114,12 +128,18 @@ if (isMainModule) {
     console.log(`[DirectTerminal] WebSocket server listening on port ${PORT}`);
   });
 
+  let shuttingDown = false;
+
   function handleShutdown(signal: string) {
+    if (shuttingDown) return;
+    shuttingDown = true;
     console.log(`[DirectTerminal] Received ${signal}, shutting down...`);
-    shutdown();
+    shutdown(1_000);
     const forceExitTimer = setTimeout(() => {
-      console.error("[DirectTerminal] Forced shutdown after timeout");
-      process.exit(1);
+      console.warn(
+        "[DirectTerminal] Shutdown cleanup still pending after timeout; exiting cleanly",
+      );
+      process.exit(0);
     }, 5000);
     forceExitTimer.unref();
   }

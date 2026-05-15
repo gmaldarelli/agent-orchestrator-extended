@@ -57,6 +57,16 @@ describe("start-all.ts", () => {
     expect(source).toMatch(/spawnManagedDaemonChild/);
     expect(source).toMatch(/detached:\s*!\s*isWindows\(\)/);
   });
+
+  it("uses a configurable 15s shutdown grace period", () => {
+    expect(source).toMatch(/DEFAULT_SHUTDOWN_GRACE_MS\s*=\s*15_000/);
+    expect(source).toMatch(/AO_SHUTDOWN_GRACE_MS/);
+  });
+
+  it("does not treat the shutdown safety fallback as command failure", () => {
+    expect(source).not.toMatch(/process\.exit\(1\)/);
+    expect(source).toMatch(/safety fallback/);
+  });
 });
 
 describe("OrchestratorConfig compatibility", () => {

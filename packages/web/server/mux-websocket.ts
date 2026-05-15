@@ -63,6 +63,7 @@ export class SessionBroadcaster {
   private errorSubscribers = new Set<(error: string) => void>();
   private intervalId: ReturnType<typeof setInterval> | null = null;
   private polling = false;
+  private shuttingDown = false;
   private readonly baseUrl: string;
 
   constructor(nextPort: string) {
@@ -165,9 +166,17 @@ export class SessionBroadcaster {
     } catch (err) {
       clearTimeout(timeoutId);
       const msg = err instanceof Error ? err.message : String(err);
+      if (this.shuttingDown && isAbortError(err)) {
+        return { sessions: null, error: null };
+      }
       console.warn("[SessionBroadcaster] fetchSnapshot error:", msg);
       return { sessions: null, error: msg };
     }
+  }
+
+  shutdown(): void {
+    this.shuttingDown = true;
+    this.disconnect();
   }
 
   private disconnect(): void {
@@ -176,6 +185,13 @@ export class SessionBroadcaster {
       this.intervalId = null;
     }
   }
+}
+
+function isAbortError(err: unknown): boolean {
+  return (
+    err instanceof Error &&
+    (err.name === "AbortError" || err.message === "This operation was aborted")
+  );
 }
 
 // node-pty is an optionalDependency — load dynamically
@@ -232,6 +248,7 @@ const REATTACH_RESET_GRACE_MS = 5_000;
 export class TerminalManager {
   private terminals = new Map<string, ManagedTerminal>();
   private TMUX: string;
+  private shuttingDown = false;
 
   constructor(tmuxPath?: string) {
     const resolved = tmuxPath ?? findTmux();
@@ -381,8 +398,24 @@ export class TerminalManager {
     // request, in-flight terminal) for up to the subprocess timeout when
     // tmux is slow to respond.
     pty.onExit(async ({ exitCode }) => {
-      console.log(`[MuxServer] PTY exited for ${id} with code ${exitCode}`);
+      const reportedExitCode = this.shuttingDown ? 0 : exitCode;
+      if (this.shuttingDown) {
+        console.log(`[MuxServer] PTY detached for ${id} during shutdown`);
+      } else {
+        console.log(`[MuxServer] PTY exited for ${id} with code ${exitCode}`);
+      }
       terminal.pty = null;
+
+      if (this.shuttingDown) {
+        if (terminal.resetTimer) {
+          clearTimeout(terminal.resetTimer);
+          terminal.resetTimer = undefined;
+        }
+        for (const cb of terminal.exitCallbacks) {
+          cb(reportedExitCode);
+        }
+        return;
+      }
 
       // Skip the re-attach loop entirely when the underlying tmux session is
       // gone (e.g. user pressed Ctrl-C in the pane and the launch command
@@ -392,17 +425,14 @@ export class TerminalManager {
       // clean user-initiated termination — see issue #1756. The
       // MAX_REATTACH_ATTEMPTS bound from #1640 still covers tmux server
       // hiccups where the session does still exist.
-      if (
-        terminal.subscribers.size > 0 &&
-        !(await tmuxHasSession(this.TMUX, tmuxSessionId))
-      ) {
+      if (terminal.subscribers.size > 0 && !(await tmuxHasSession(this.TMUX, tmuxSessionId))) {
         console.log(`[MuxServer] tmux session ${tmuxSessionId} is gone, not re-attaching`);
         if (terminal.resetTimer) {
           clearTimeout(terminal.resetTimer);
           terminal.resetTimer = undefined;
         }
         for (const cb of terminal.exitCallbacks) {
-          cb(exitCode);
+          cb(reportedExitCode);
         }
         return;
       }
@@ -433,7 +463,7 @@ export class TerminalManager {
 
       // Notify subscribers that the terminal has exited (re-attach failed or no subscribers)
       for (const cb of terminal.exitCallbacks) {
-        cb(exitCode);
+        cb(reportedExitCode);
       }
     });
 
@@ -495,10 +525,16 @@ export class TerminalManager {
           terminal.resetTimer = undefined;
         }
         if (terminal.pty) {
-          terminal.pty.kill();
-          terminal.pty = null;
+          if (this.shuttingDown) {
+            terminal.pty.write("\x02d");
+          } else {
+            terminal.pty.kill();
+            terminal.pty = null;
+          }
         }
-        this.terminals.delete(key);
+        if (!this.shuttingDown) {
+          this.terminals.delete(key);
+        }
       }
     };
   }
@@ -510,6 +546,30 @@ export class TerminalManager {
     const terminal = this.terminals.get(this.terminalKey(id, projectId));
     if (!terminal) return "";
     return terminal.buffer.join("");
+  }
+
+  shutdown(graceMs = 1_000): void {
+    if (this.shuttingDown) return;
+    this.shuttingDown = true;
+
+    for (const terminal of this.terminals.values()) {
+      if (terminal.resetTimer) {
+        clearTimeout(terminal.resetTimer);
+        terminal.resetTimer = undefined;
+      }
+      terminal.pty?.write("\x02d");
+    }
+
+    const killTimer = setTimeout(() => {
+      for (const terminal of this.terminals.values()) {
+        if (terminal.pty) {
+          terminal.pty.kill();
+          terminal.pty = null;
+        }
+      }
+      this.terminals.clear();
+    }, graceMs);
+    killTimer.unref();
   }
 }
 
@@ -637,9 +697,7 @@ export function handleWindowsPipeMessage(
               try {
                 const status = JSON.parse(payload.toString("utf-8")) as { alive: boolean };
                 if (!status.alive && ws.readyState === WS_OPEN) {
-                  ws.send(
-                    JSON.stringify({ ch: "terminal", id, type: "exited", code: 0, ...echo }),
-                  );
+                  ws.send(JSON.stringify({ ch: "terminal", id, type: "exited", code: 0, ...echo }));
                 }
               } catch {
                 /* ignore parse errors */
@@ -705,6 +763,11 @@ export function createMuxWebSocket(tmuxPath?: string | null): WebSocketServer | 
   const broadcaster = new SessionBroadcaster(nextPort);
 
   const wss = new WebSocketServer({ noServer: true });
+  const shutdown = (): void => {
+    broadcaster.shutdown();
+    terminalManager?.shutdown();
+  };
+  (wss as WebSocketServer & { shutdownMuxResources?: () => void }).shutdownMuxResources = shutdown;
 
   wss.on("connection", (ws) => {
     console.log("[MuxServer] New mux connection");
@@ -759,7 +822,14 @@ export function createMuxWebSocket(tmuxPath?: string | null): WebSocketServer | 
             if (type === "open") {
               if (isWindows()) {
                 handleWindowsPipeMessage(
-                  msg as { id: string; type: string; projectId?: string; data?: string; cols?: number; rows?: number },
+                  msg as {
+                    id: string;
+                    type: string;
+                    projectId?: string;
+                    data?: string;
+                    cols?: number;
+                    rows?: number;
+                  },
                   ws,
                   winPipes,
                   winPipeBuffers,
@@ -841,7 +911,13 @@ export function createMuxWebSocket(tmuxPath?: string | null): WebSocketServer | 
             } else if (type === "resize" && "cols" in msg && "rows" in msg) {
               if (isWindows()) {
                 handleWindowsPipeMessage(
-                  msg as { id: string; type: string; projectId?: string; cols: number; rows: number },
+                  msg as {
+                    id: string;
+                    type: string;
+                    projectId?: string;
+                    cols: number;
+                    rows: number;
+                  },
                   ws,
                   winPipes,
                   winPipeBuffers,
@@ -853,7 +929,14 @@ export function createMuxWebSocket(tmuxPath?: string | null): WebSocketServer | 
             } else if (type === "close") {
               if (isWindows()) {
                 handleWindowsPipeMessage(
-                  msg as { id: string; type: string; projectId?: string; data?: string; cols?: number; rows?: number },
+                  msg as {
+                    id: string;
+                    type: string;
+                    projectId?: string;
+                    data?: string;
+                    cols?: number;
+                    rows?: number;
+                  },
                   ws,
                   winPipes,
                   winPipeBuffers,
