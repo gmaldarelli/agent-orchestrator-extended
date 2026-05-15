@@ -57,6 +57,46 @@ function findAllEvents(kind: string) {
     .filter((e) => e.kind === kind);
 }
 
+function writeTerminatedSession(
+  sessionId: string,
+  options: { worktree: string; branch?: string },
+): void {
+  const metadata: Record<string, unknown> = {
+    worktree: options.worktree,
+    status: "killed",
+    project: "my-app",
+    runtimeHandle: makeHandle("rt-old"),
+    lifecycle: {
+      version: 2,
+      session: {
+        kind: "worker",
+        state: "terminated",
+        reason: "manually_killed",
+        startedAt: "2025-01-01T00:00:00.000Z",
+        completedAt: null,
+        terminatedAt: "2025-01-01T00:00:00.000Z",
+        lastTransitionAt: "2025-01-01T00:00:00.000Z",
+      },
+      pr: { state: "none", reason: "not_created", number: null, url: null, lastObservedAt: null },
+      runtime: {
+        state: "missing",
+        reason: "process_missing",
+        lastObservedAt: "2025-01-01T00:00:00.000Z",
+        handle: null,
+        tmuxName: null,
+      },
+    },
+  };
+  if (options.branch !== undefined) {
+    metadata["branch"] = options.branch;
+  }
+  writeMetadata(
+    sessionsDir,
+    sessionId,
+    metadata as unknown as Parameters<typeof writeMetadata>[2],
+  );
+}
+
 describe("session.kill_started (MUST)", () => {
   it("emits before runtime.destroy is attempted", async () => {
     let destroyCalled = false;
@@ -303,6 +343,22 @@ describe("session.send_failed (MUST)", () => {
     // B11: data must not contain message content
     expect(JSON.stringify(event!.data ?? {})).not.toContain("hi");
   });
+
+  it("does not double-emit session.restore_failed when restore fails during send", async () => {
+    const wsPath = join(ctx.tmpDir, "missing-send-ws");
+    writeTerminatedSession("app-send-restore", { worktree: wsPath, branch: "feat/send" });
+
+    ctx.mockWorkspace.exists = vi.fn().mockResolvedValue(false);
+    ctx.mockWorkspace.restore = vi.fn().mockRejectedValue(new Error("restore failed"));
+
+    const sm = createSessionManager({ config, registry: mockRegistry });
+    await expect(sm.send("app-send-restore", "hi")).rejects.toThrow();
+
+    const restoreFailed = findAllEvents("session.restore_failed");
+    expect(restoreFailed).toHaveLength(1);
+    expect(restoreFailed[0]!.data).toMatchObject({ stage: "workspace_restore" });
+    expect(findEvent("session.send_failed")).toBeDefined();
+  });
 });
 
 describe("session.restore_failed (MUST)", () => {
@@ -388,6 +444,51 @@ describe("session.restore_failed (MUST)", () => {
 
     const event = findEvent("session.restore_failed");
     expect(event).toBeDefined();
+  });
+
+  it("emits when workspace is missing and the workspace plugin cannot restore", async () => {
+    const wsPath = join(ctx.tmpDir, "missing-no-restore");
+    writeTerminatedSession("app-no-restore", { worktree: wsPath, branch: "feat/no-restore" });
+
+    ctx.mockWorkspace.exists = vi.fn().mockResolvedValue(false);
+    ctx.mockWorkspace.restore = undefined;
+
+    const sm = createSessionManager({ config, registry: mockRegistry });
+    await expect(sm.restore("app-no-restore")).rejects.toThrow();
+
+    const event = findEvent("session.restore_failed");
+    expect(event).toBeDefined();
+    expect(event!.sessionId).toBe("app-no-restore");
+    expect(event!.data).toMatchObject({
+      stage: "workspace_restore",
+      workspacePath: wsPath,
+      reason: "workspace plugin does not support restore",
+    });
+  });
+
+  it("emits when workspace is missing and branch metadata is absent", async () => {
+    const wsPath = join(ctx.tmpDir, "missing-no-branch");
+    writeTerminatedSession("app-no-branch", { worktree: wsPath });
+
+    ctx.mockWorkspace.exists = vi.fn().mockResolvedValue(false);
+    ctx.mockWorkspace.restore = vi.fn().mockResolvedValue({
+      path: wsPath,
+      branch: "unused",
+      sessionId: "app-no-branch",
+      projectId: "my-app",
+    });
+
+    const sm = createSessionManager({ config, registry: mockRegistry });
+    await expect(sm.restore("app-no-branch")).rejects.toThrow();
+
+    const event = findEvent("session.restore_failed");
+    expect(event).toBeDefined();
+    expect(event!.sessionId).toBe("app-no-branch");
+    expect(event!.data).toMatchObject({
+      stage: "workspace_restore",
+      workspacePath: wsPath,
+      reason: "branch metadata is missing",
+    });
   });
 });
 

@@ -2762,15 +2762,19 @@ export function createSessionManager(deps: SessionManagerDeps): OpenCodeSessionM
         throw new Error(`Cannot send to session ${sessionId}: ${reason}`);
       }
 
+      let restored: Session;
       try {
-        const restored = await restore(sessionId);
-        const ready = await waitForRestoredSession(restored);
-        if (!ready) {
-          throw new Error("restored session did not become ready for delivery");
-        }
-        return restored;
+        restored = await restore(sessionId);
       } catch (err) {
         const detail = err instanceof Error ? err.message : String(err);
+        throw new Error(`Cannot send to session ${sessionId}: ${reason} (${detail})`, {
+          cause: err,
+        });
+      }
+
+      const ready = await waitForRestoredSession(restored);
+      if (!ready) {
+        const detail = "restored session did not become ready for delivery";
         recordActivityEvent({
           projectId,
           sessionId,
@@ -2780,10 +2784,9 @@ export function createSessionManager(deps: SessionManagerDeps): OpenCodeSessionM
           summary: `restore for delivery failed: ${sessionId}`,
           data: { reason: detail, trigger: "send" },
         });
-        throw new Error(`Cannot send to session ${sessionId}: ${reason} (${detail})`, {
-          cause: err,
-        });
+        throw new Error(`Cannot send to session ${sessionId}: ${reason} (${detail})`);
       }
+      return restored;
     };
 
     const prepareSession = async (forceRestore = false): Promise<Session> => {
@@ -3147,9 +3150,35 @@ export function createSessionManager(deps: SessionManagerDeps): OpenCodeSessionM
     if (!workspaceExists) {
       // Try to restore workspace if plugin supports it
       if (!plugins.workspace?.restore) {
+        recordActivityEvent({
+          projectId,
+          sessionId,
+          source: "session-manager",
+          kind: "session.restore_failed",
+          level: "error",
+          summary: `restore workspace failed: ${sessionId}`,
+          data: {
+            stage: "workspace_restore",
+            workspacePath,
+            reason: "workspace plugin does not support restore",
+          },
+        });
         throw new WorkspaceMissingError(workspacePath, "workspace plugin does not support restore");
       }
       if (!session.branch) {
+        recordActivityEvent({
+          projectId,
+          sessionId,
+          source: "session-manager",
+          kind: "session.restore_failed",
+          level: "error",
+          summary: `restore workspace failed: ${sessionId}`,
+          data: {
+            stage: "workspace_restore",
+            workspacePath,
+            reason: "branch metadata is missing",
+          },
+        });
         throw new WorkspaceMissingError(workspacePath, "branch metadata is missing");
       }
       try {
