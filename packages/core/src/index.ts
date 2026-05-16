@@ -444,6 +444,7 @@ export {
   validatePipelineDag,
   // v1.2: command executor, builtin executors, findings parser
   createCommandExecutor,
+  CommandExecutorSpawnError,
   formatForkRefusalMessage,
   DEFAULT_COMMAND_TIMEOUT_MS,
   DEFAULT_COMMAND_STDOUT_CAP_BYTES,
@@ -522,6 +523,7 @@ export type {
   CommandStartInput,
   CommandOutcome,
   CommandExecutorDeps,
+  RunningCommandStage,
   // v1.2: builtin executor types
   BuiltinExecutor,
   BuiltinRunInput,

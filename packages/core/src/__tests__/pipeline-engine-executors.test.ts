@@ -33,8 +33,11 @@ import {
   createPipelineEngine,
   createPipelineStore,
   formatForkRefusalMessage,
+  isTerminalLoopState,
   type AgentStageExecutor,
   type Pipeline,
+  type PipelineEngine,
+  type RunId,
   type RunningAgentStage,
   type Stage,
   type StageOutcome,
@@ -42,6 +45,30 @@ import {
 } from "../pipeline/index.js";
 import { createPluginRegistry } from "../plugin-registry.js";
 import type { Agent, PluginManifest, PluginModule } from "../types.js";
+
+/**
+ * Poll the engine until the run reaches a terminal loop state (done / stalled
+ * / terminated). Command stages now use the non-blocking pattern — they're in
+ * commandInflight after startRun and only complete after tick() harvests the
+ * exited child. Fast subprocesses (true, echo) typically finish in one or two
+ * ticks; we cap at 200 iterations (≈10s) to avoid hanging on flaky hosts.
+ */
+async function tickUntilDone(
+  engine: PipelineEngine,
+  runId: RunId,
+  maxTicks = 200,
+  intervalMs = 50,
+): Promise<void> {
+  for (let i = 0; i < maxTicks; i++) {
+    const runState = engine.state().runs[runId];
+    if (runState && isTerminalLoopState(runState.loopState)) return;
+    await engine.tick();
+    // Brief yield so the child process has a chance to exit between ticks.
+    await new Promise<void>((r) => setTimeout(r, intervalMs));
+  }
+  // One final tick in case the process exited during the last sleep.
+  await engine.tick();
+}
 
 const posixDescribe = isWindows() ? describe.skip : describe;
 
@@ -153,6 +180,8 @@ posixDescribe("engine + command executor", () => {
       headSha: "sha-aaa",
     });
 
+    await tickUntilDone(engine, runId);
+
     const run = store.loadRun(runId);
     expect(run?.stages["lint"]?.status).toBe("succeeded");
     const stageRunId = run?.stages["lint"]?.stageRunId;
@@ -188,6 +217,10 @@ posixDescribe("engine + command executor", () => {
       isFromFork: true,
     });
 
+    // Fork refusal settles synchronously inside startRun (no subprocess),
+    // so a single tick is sufficient to confirm the terminal state.
+    await engine.tick();
+
     const run = store.loadRun(runId);
     expect(run?.stages["scan"]?.status).toBe("failed");
     expect(run?.stages["scan"]?.errorMessage).toBe(formatForkRefusalMessage("scan"));
@@ -220,6 +253,8 @@ posixDescribe("engine + command executor", () => {
       headSha: "sha-fork",
       isFromFork: true,
     });
+
+    await tickUntilDone(engine, runId);
 
     const run = store.loadRun(runId);
     expect(run?.stages["scan"]?.status).toBe("succeeded");
@@ -281,6 +316,8 @@ posixDescribe("engine + builtin/router", () => {
       headSha: "sha-aaa",
     });
 
+    await tickUntilDone(engine, runId);
+
     const run = store.loadRun(runId);
     expect(run?.stages["lint"]?.status).toBe("succeeded");
     expect(run?.stages["deliver"]?.status).toBe("succeeded");
@@ -328,12 +365,14 @@ posixDescribe("engine + builtin/router", () => {
       ],
     };
 
-    await engine.startRun({
+    const runId = await engine.startRun({
       pipeline,
       projectId: "proj-a",
       sessionId: "ses-run-owner",
       headSha: "sha-aaa",
     });
+
+    await tickUntilDone(engine, runId);
 
     expect(sendToSession).toHaveBeenCalledWith("ses-run-owner", expect.any(String));
   });
@@ -399,6 +438,8 @@ posixDescribe("engine + builtin/compose", () => {
       headSha: "sha-aaa",
     });
 
+    await tickUntilDone(engine, runId);
+
     const run = store.loadRun(runId);
     expect(run?.stages["merge"]?.status).toBe("succeeded");
     expect(run?.loopState).toBe("done");
@@ -462,6 +503,8 @@ posixDescribe("engine + builtin executors — guardrails", () => {
       headSha: "sha-aaa",
     });
 
+    await tickUntilDone(engine, runId);
+
     const run = store.loadRun(runId);
     expect(run?.stages["dummy"]?.status).toBe("succeeded");
     expect(run?.stages["deliver"]?.status).toBe("failed");
@@ -492,6 +535,9 @@ posixDescribe("engine + builtin executors — guardrails", () => {
       sessionId: "ses-1",
       headSha: "sha-aaa",
     });
+
+    // No subprocess — failure is instant. One tick is enough to confirm.
+    await engine.tick();
 
     const run = store.loadRun(runId);
     expect(run?.stages["lint"]?.status).toBe("failed");
@@ -548,9 +594,61 @@ posixDescribe("engine + builtin executors — guardrails", () => {
       headSha: "sha-aaa",
     });
 
+    await tickUntilDone(engine, runId);
+
     const run = store.loadRun(runId);
     expect(run?.stages["deliver"]?.status).toBe("failed");
     expect(run?.stages["deliver"]?.errorMessage).toContain("simulated executor crash");
     expect(run?.loopState).toBe("stalled");
   });
+});
+
+posixDescribe("engine + command executor — non-blocking handoff", () => {
+  it("does not block cancelRun / tick / parallel stages during a long-running command stage", async () => {
+    // Pipeline: two parallel `sleep 5` command stages (no dependsOn).
+    // After startRun returns, both should be in commandInflight (running).
+    // cancelRun should complete in <500ms (not have to wait for sleep to finish).
+    // After cancel, the run state should be 'terminated' and stages 'outdated' or 'failed'.
+    const registry = createPluginRegistry();
+    registry.register(makeAgentPlugin());
+    const store = createPipelineStore(storeRoot);
+
+    const engine = createPipelineEngine({
+      store,
+      registry,
+      agentExecutor: noopAgentExecutor(),
+      commandExecutor: createCommandExecutor(),
+    });
+
+    const pipeline: Pipeline = {
+      id: asPipelineId("pl-nonblock"),
+      name: "nonblock",
+      stages: [
+        makeCommandStage("stage-a", "sleep 5"),
+        makeCommandStage("stage-b", "sleep 5"),
+      ],
+    };
+
+    const runId = await engine.startRun({
+      pipeline,
+      projectId: "proj-a",
+      sessionId: "ses-1",
+      headSha: "sha-nb",
+    });
+
+    // After startRun the stages must be running (lock was released immediately
+    // after spawn — the children are alive in commandInflight).
+    const runAfterStart = engine.state().runs[runId];
+    expect(runAfterStart?.loopState).toBe("running");
+
+    // cancelRun must complete far faster than the 5s sleep.
+    const cancelStart = Date.now();
+    await engine.cancelRun(runId);
+    const cancelElapsed = Date.now() - cancelStart;
+    expect(cancelElapsed).toBeLessThan(500);
+
+    // The run must be in a terminal state.
+    const runAfterCancel = engine.state().runs[runId];
+    expect(isTerminalLoopState(runAfterCancel?.loopState ?? "running")).toBe(true);
+  }, 10_000); // generous wall-clock budget; the cancel itself must be <500ms
 });

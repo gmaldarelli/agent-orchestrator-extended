@@ -15,6 +15,7 @@ import {
   asRunId,
   asStageRunId,
   createCommandExecutor,
+  CommandExecutorSpawnError,
   DEFAULT_COMMAND_STDERR_CAP_BYTES,
   formatForkRefusalMessage,
   type CommandStartInput,
@@ -46,18 +47,17 @@ function makeInput(overrides: Partial<CommandStartInput> = {}): CommandStartInpu
 
 // Platform-neutral guards: never spawn a subprocess.
 describe("command executor — guards (cross-platform)", () => {
-  it("rejects non-command stages with a typed failure", async () => {
+  it("throws CommandExecutorSpawnError via run() for non-command stages", async () => {
     const exec = createCommandExecutor();
-    const outcome = await exec.run(
-      makeInput({
-        stage: makeCommandStage({
-          executor: { kind: "agent", plugin: "claude-code", mode: "code" },
+    await expect(
+      exec.run(
+        makeInput({
+          stage: makeCommandStage({
+            executor: { kind: "agent", plugin: "claude-code", mode: "code" },
+          }),
         }),
-      }),
-    );
-    expect(outcome.status).toBe("failed");
-    if (outcome.status !== "failed") throw new Error("unreachable");
-    expect(outcome.errorMessage).toContain("command executor cannot run");
+      ),
+    ).rejects.toThrow(CommandExecutorSpawnError);
   });
 
   it("refuses to run a fork PR when stage.allowFork is unset", async () => {
@@ -304,6 +304,151 @@ posixDescribe("command executor — stderr cap", () => {
     // The captured stderr in the error message must stay bounded — confirm it
     // is well under 2x the cap (the raw cap plus the marker suffix).
     expect(outcome.errorMessage.length).toBeLessThan(DEFAULT_COMMAND_STDERR_CAP_BYTES * 2);
+  });
+
+  it("includes stderr in the error message when stdout overflows the cap", async () => {
+    // Regression: round 3 fixed a bug where the stdout-overflow path dropped
+    // stderr entirely, leaving operators with no diagnostic signal. The error
+    // message should contain BOTH the "stdout exceeded" marker AND any stderr
+    // the command produced.
+    const exec = createCommandExecutor();
+    // 4 MB + 1 KB of stdout (well over DEFAULT_COMMAND_STDOUT_CAP_BYTES),
+    // plus a short stderr hint. The shell pipeline below is GNU-coreutils-
+    // safe: `yes` is line-buffered, `head -c` is byte-bounded.
+    const stage = makeCommandStage({
+      executor: {
+        kind: "command",
+        command: "/bin/sh",
+        args: [
+          "-c",
+          'yes x | head -c 4200000; echo "stderr-hint" >&2',
+        ],
+      },
+    });
+
+    const outcome = await exec.run(makeInput({ stage }));
+
+    expect(outcome.status).toBe("failed");
+    if (outcome.status !== "failed") throw new Error("unreachable");
+    expect(outcome.errorMessage).toContain("stdout exceeded");
+    expect(outcome.errorMessage).toContain("stderr-hint");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// startStage / pollStage / cancelStage — new non-blocking API
+// ---------------------------------------------------------------------------
+
+// Cross-platform: kind-mismatch throws without spawning a subprocess.
+describe("command executor — startStage (cross-platform)", () => {
+  it("throws CommandExecutorSpawnError for non-command stages", async () => {
+    const exec = createCommandExecutor();
+    await expect(
+      exec.startStage(
+        makeInput({
+          stage: makeCommandStage({
+            executor: { kind: "agent", plugin: "claude-code", mode: "code" },
+          }),
+        }),
+      ),
+    ).rejects.toThrow(CommandExecutorSpawnError);
+  });
+
+  it("returns a handle with refused outcome for fork PRs (no subprocess)", async () => {
+    const onRefuse = vi.fn();
+    const exec = createCommandExecutor({ onRefuse });
+    const stage = makeCommandStage({
+      executor: { kind: "command", command: "/bin/sh", args: ["-c", "echo should-not-run"] },
+    });
+    const handle = await exec.startStage(makeInput({ stage, isFromFork: true }));
+
+    // Outcome is already populated (no subprocess was spawned).
+    expect(handle.outcome).not.toBeNull();
+    expect(handle.outcome?.status).toBe("failed");
+    if (handle.outcome?.status !== "failed") throw new Error("unreachable");
+    expect(handle.outcome.refused).toBe(true);
+    expect(handle.outcome.errorMessage).toBe(formatForkRefusalMessage(stage.name));
+
+    // done resolves immediately.
+    const resolved = await handle.done;
+    expect(resolved.status).toBe("failed");
+
+    // onRefuse was called.
+    expect(onRefuse).toHaveBeenCalledTimes(1);
+  });
+});
+
+posixDescribe("command executor — startStage (POSIX subprocess)", () => {
+  it("startStage returns a handle without waiting for the child to exit", async () => {
+    const exec = createCommandExecutor();
+    const stage = makeCommandStage({
+      executor: { kind: "command", command: "/bin/sh", args: ["-c", "sleep 1"] },
+    });
+
+    const start = Date.now();
+    const handle = await exec.startStage(makeInput({ stage }));
+    const elapsed = Date.now() - start;
+
+    // Must return well before the child exits (target: <100ms on any CI host).
+    expect(elapsed).toBeLessThan(100);
+    // While the child is alive, outcome is null and pollStage says "running".
+    expect(handle.outcome).toBeNull();
+    expect(exec.pollStage(handle).status).toBe("running");
+
+    // Clean up: cancel so the sleep doesn't run for a full second.
+    await exec.cancelStage(handle);
+  });
+
+  it("pollStage returns running while the child is alive, then the terminal outcome once it exits", async () => {
+    const exec = createCommandExecutor();
+    const stage = makeCommandStage({
+      executor: { kind: "command", command: "/bin/sh", args: ["-c", "true"] },
+    });
+
+    const handle = await exec.startStage(makeInput({ stage }));
+
+    // Await the child to finish.
+    const outcome = await handle.done;
+
+    // pollStage now returns the same terminal outcome.
+    expect(exec.pollStage(handle).status).toBe("completed");
+    expect(outcome.status).toBe("completed");
+    expect(handle.outcome).not.toBeNull();
+    expect(handle.outcome?.status).toBe("completed");
+  });
+
+  it("cancelStage kills the child and resolves done with a cancelled failure", async () => {
+    const exec = createCommandExecutor();
+    const stage = makeCommandStage({
+      executor: { kind: "command", command: "/bin/sh", args: ["-c", "sleep 30"] },
+    });
+
+    const handle = await exec.startStage(makeInput({ stage }));
+    expect(handle.outcome).toBeNull();
+
+    const cancelStart = Date.now();
+    await exec.cancelStage(handle);
+    const cancelElapsed = Date.now() - cancelStart;
+
+    // Cancel must resolve quickly (well before the 30s sleep).
+    expect(cancelElapsed).toBeLessThan(3_000);
+
+    const outcome = await handle.done;
+    expect(outcome.status).toBe("failed");
+    if (outcome.status !== "failed") throw new Error("unreachable");
+    expect(outcome.errorMessage).toContain("cancelled");
+  });
+
+  it("cancelStage is idempotent — calling twice does not error", async () => {
+    const exec = createCommandExecutor();
+    const stage = makeCommandStage({
+      executor: { kind: "command", command: "/bin/sh", args: ["-c", "sleep 30"] },
+    });
+
+    const handle = await exec.startStage(makeInput({ stage }));
+    await exec.cancelStage(handle);
+    // Second call must not throw.
+    await expect(exec.cancelStage(handle)).resolves.toBeUndefined();
   });
 });
 

@@ -56,7 +56,12 @@ import {
   type StartStageInput,
 } from "./executors/agent.js";
 import type { BuiltinExecutor } from "./executors/builtin-router.js";
-import type { CommandStageExecutor, CommandStartInput } from "./executors/command.js";
+import {
+  CommandExecutorSpawnError,
+  type CommandStageExecutor,
+  type CommandStartInput,
+  type RunningCommandStage,
+} from "./executors/command.js";
 
 export interface PipelineEngineDeps {
   store: PipelineStore;
@@ -142,8 +147,10 @@ export function createPipelineEngine(deps: PipelineEngineDeps): PipelineEngine {
   } = deps;
 
   let state: EngineState = deps.initialState ?? emptyEngineState();
-  /** stageRunId → executor handle for stages we own. */
+  /** stageRunId → executor handle for agent stages. */
   const inflight = new Map<StageRunId, RunningAgentStage>();
+  /** stageRunId → executor handle for command stages. */
+  const commandInflight = new Map<StageRunId, RunningCommandStage>();
   /**
    * Side-table for projectId/issueId/isFromFork, keyed by RunId. The persisted
    * RunState shape was locked by v0.1 and doesn't carry these, so the engine
@@ -262,11 +269,20 @@ export function createPipelineEngine(deps: PipelineEngineDeps): PipelineEngine {
       }
 
       case "CANCEL_STAGE": {
-        const handle = inflight.get(effect.stageRunId);
-        if (handle) {
+        const agentHandle = inflight.get(effect.stageRunId);
+        if (agentHandle) {
           inflight.delete(effect.stageRunId);
           try {
-            await agentExecutor.cancelStage(handle);
+            await agentExecutor.cancelStage(agentHandle);
+          } catch {
+            // Best-effort — handle may already be gone.
+          }
+        }
+        const cmdHandle = commandInflight.get(effect.stageRunId);
+        if (cmdHandle && commandExecutor) {
+          commandInflight.delete(effect.stageRunId);
+          try {
+            await commandExecutor.cancelStage(cmdHandle);
           } catch {
             // Best-effort — handle may already be gone.
           }
@@ -351,41 +367,54 @@ export function createPipelineEngine(deps: PipelineEngineDeps): PipelineEngine {
       isFromFork: meta?.isFromFork ?? false,
     };
 
-    // Wrap the executor call so an unexpected throw (executor bug,
-    // platform error not surfaced as a CommandOutcome) still terminates
-    // the stage rather than escaping `executeEffect` and leaving the
-    // stage permanently `running`.
-    let outcome;
+    // startStage returns immediately after spawn (or instantly for synthetic
+    // failures). The lock is released as soon as this function returns —
+    // tick() polls commandInflight in a separate lock acquisition.
+    let handle;
     try {
-      outcome = await commandExecutor.run(input);
+      handle = await commandExecutor.startStage(input);
     } catch (err) {
+      // CommandExecutorSpawnError for kind mismatch — should not happen in
+      // practice since the engine only routes kind="command" stages here.
       await dispatchInline({
         type: "STAGE_FAILED",
         now: now(),
         runId,
         stageName: stage.name,
         errorMessage:
-          err instanceof Error ? err.message : `command executor threw: ${String(err)}`,
+          err instanceof CommandExecutorSpawnError
+            ? err.message
+            : `command executor failed to start: ${err instanceof Error ? err.message : String(err)}`,
       });
       return;
     }
-    if (outcome.status === "completed") {
-      await dispatchInline({
-        type: "STAGE_COMPLETED",
-        now: now(),
-        runId,
-        stageName: stage.name,
-        artifacts: outcome.artifacts,
-      });
-    } else {
-      await dispatchInline({
-        type: "STAGE_FAILED",
-        now: now(),
-        runId,
-        stageName: stage.name,
-        errorMessage: outcome.errorMessage,
-      });
+
+    // If the outcome is already populated (fork refusal / sync spawn error),
+    // dispatch inline immediately without adding to commandInflight.
+    if (handle.outcome !== null) {
+      const outcome = handle.outcome;
+      if (outcome.status === "completed") {
+        await dispatchInline({
+          type: "STAGE_COMPLETED",
+          now: now(),
+          runId,
+          stageName: stage.name,
+          artifacts: outcome.artifacts,
+        });
+      } else {
+        await dispatchInline({
+          type: "STAGE_FAILED",
+          now: now(),
+          runId,
+          stageName: stage.name,
+          errorMessage: outcome.errorMessage,
+        });
+      }
+      return;
     }
+
+    // Child is running. Store the handle for tick() to poll.
+    commandInflight.set(stageRunId, handle);
   }
 
   async function runBuiltinStage(
@@ -480,9 +509,11 @@ export function createPipelineEngine(deps: PipelineEngineDeps): PipelineEngine {
 
   async function tick(): Promise<void> {
     return withLock(async () => {
-      if (inflight.size === 0) return;
-      const handles = [...inflight.values()];
-      for (const handle of handles) {
+      if (inflight.size === 0 && commandInflight.size === 0) return;
+
+      // Poll agent stages (async, may yield).
+      const agentHandles = [...inflight.values()];
+      for (const handle of agentHandles) {
         const outcome = await agentExecutor.pollStage(handle);
         if (outcome.status === "running") continue;
 
@@ -504,6 +535,37 @@ export function createPipelineEngine(deps: PipelineEngineDeps): PipelineEngine {
             stageName: handle.stageName,
             errorMessage: outcome.errorMessage,
           });
+        }
+      }
+
+      // Poll command stages (synchronous read of handle.outcome via pollStage).
+      // commandInflight is only populated when commandExecutor is defined, so
+      // this guard is belt-and-suspenders rather than a real runtime path.
+      if (commandExecutor) {
+        const commandHandles = [...commandInflight.values()];
+        for (const handle of commandHandles) {
+          const outcome = commandExecutor.pollStage(handle);
+          if (outcome.status === "running") continue;
+
+          commandInflight.delete(handle.stageRunId);
+
+          if (outcome.status === "completed") {
+            await dispatchInline({
+              type: "STAGE_COMPLETED",
+              now: now(),
+              runId: handle.runId,
+              stageName: handle.stageName,
+              artifacts: outcome.artifacts,
+            });
+          } else {
+            await dispatchInline({
+              type: "STAGE_FAILED",
+              now: now(),
+              runId: handle.runId,
+              stageName: handle.stageName,
+              errorMessage: outcome.errorMessage,
+            });
+          }
         }
       }
     });

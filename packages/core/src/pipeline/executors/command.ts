@@ -25,6 +25,11 @@
  * logged via a `command.refused_fork` observation effect (the engine relays
  * it to the standard observation log) so operators can see why a stage was
  * skipped.
+ *
+ * Non-blocking design: `startStage` returns a handle as soon as the child
+ * process spawns (or instantly for synthetic failures like fork refusal /
+ * kind mismatch). The engine polls via `pollStage` inside `tick()` so the
+ * serialization lock is not held for the duration of the child process.
  */
 
 import { spawn } from "node:child_process";
@@ -66,11 +71,77 @@ export interface CommandStartInput {
 }
 
 export type CommandOutcome =
+  | { status: "running" }
   | { status: "completed"; artifacts: ArtifactInput[] }
   | { status: "failed"; errorMessage: string; refused?: boolean };
 
+/**
+ * Handle for a command stage that's running. Mirrors `RunningAgentStage` from
+ * the agent executor. The engine holds onto this and threads it back into
+ * `pollStage` / `cancelStage`.
+ */
+export interface RunningCommandStage {
+  runId: RunId;
+  stageRunId: StageRunId;
+  stageName: string;
+  startedAt: number;
+  /**
+   * Set when the child exits, the timeout fires, spawn fails, or refusal
+   * triggers. `null` while the child is still running.
+   */
+  outcome: Exclude<CommandOutcome, { status: "running" }> | null;
+  /**
+   * Resolves with the terminal outcome once `outcome` is populated. Safe to
+   * `await` from tests or one-shot callers; the engine does NOT await this
+   * inside the lock.
+   */
+  done: Promise<Exclude<CommandOutcome, { status: "running" }>>;
+  /**
+   * Idempotent. Clears timers and kills the child process tree if alive.
+   * Settles `outcome` and resolves `done` if they haven't been settled yet.
+   */
+  cancel: () => void;
+}
+
 export interface CommandStageExecutor {
-  run(input: CommandStartInput): Promise<CommandOutcome>;
+  /**
+   * Spawn the child and return a handle. Resolves AS SOON AS spawn returns
+   * (or instantly for synthetic failures like fork refusal / kind mismatch).
+   * The handle's `outcome` field is `null` while the child is running, and
+   * populated when the child exits / times out / errors.
+   *
+   * Throws `CommandExecutorSpawnError` only for `stage.executor.kind !==
+   * "command"` — all other failures are captured inside the handle.
+   */
+  startStage(input: CommandStartInput): Promise<RunningCommandStage>;
+  /**
+   * Synchronous read of the current state. Returns `{ status: "running" }`
+   * if `handle.outcome` is still `null`.
+   */
+  pollStage(handle: RunningCommandStage): CommandOutcome;
+  /**
+   * Best-effort cancel. Calls `handle.cancel()` internally. Idempotent.
+   */
+  cancelStage(handle: RunningCommandStage): Promise<void>;
+  /**
+   * Sugar: `startStage` + `await handle.done`. Suitable for tests / one-shot
+   * callers that don't need the non-blocking split.
+   *
+   * Re-throws `CommandExecutorSpawnError` if `startStage` throws.
+   */
+  run(input: CommandStartInput): Promise<Exclude<CommandOutcome, { status: "running" }>>;
+}
+
+/**
+ * Thrown when `startStage` is called with a stage whose `executor.kind` is
+ * not `"command"`. Engine catches this and dispatches STAGE_FAILED.
+ * Follows the same pattern as `AgentExecutorSpawnError` in agent.ts.
+ */
+export class CommandExecutorSpawnError extends Error {
+  constructor(message: string, options?: { cause?: unknown }) {
+    super(message, options);
+    this.name = "CommandExecutorSpawnError";
+  }
 }
 
 /**
@@ -86,9 +157,9 @@ export const DEFAULT_COMMAND_STDOUT_CAP_BYTES = 4 * 1024 * 1024;
  */
 export const DEFAULT_COMMAND_STDERR_CAP_BYTES = 64 * 1024;
 /**
- * Grace period between SIGTERM and SIGKILL when a stage times out. Long
- * enough for a well-behaved child to flush stdout/stderr, short enough that
- * the pipeline still recovers in bounded time.
+ * Grace period between SIGTERM and SIGKILL when a stage times out or is
+ * cancelled. Long enough for a well-behaved child to flush stdout/stderr,
+ * short enough that the pipeline still recovers in bounded time.
  */
 export const COMMAND_KILL_GRACE_MS = 2_000;
 
@@ -123,184 +194,269 @@ export function createCommandExecutor(deps: CommandExecutorDeps = {}): CommandSt
   const now = deps.now ?? Date.now;
   const defaultTimeoutMs = deps.defaultTimeoutMs ?? DEFAULT_COMMAND_TIMEOUT_MS;
 
-  return {
-    run(input: CommandStartInput): Promise<CommandOutcome> {
-      const stage = input.stage;
-      if (stage.executor.kind !== "command") {
-        return Promise.resolve({
-          status: "failed",
-          errorMessage: `command executor cannot run stage "${stage.name}" with executor.kind=${stage.executor.kind}`,
-        });
-      }
+  async function startStage(input: CommandStartInput): Promise<RunningCommandStage> {
+    const stage = input.stage;
 
-      if (input.isFromFork && stage.allowFork !== true) {
-        const message = formatForkRefusalMessage(stage.name);
-        onRefuse(stage, message);
-        return Promise.resolve({ status: "failed", errorMessage: message, refused: true });
-      }
+    if (stage.executor.kind !== "command") {
+      throw new CommandExecutorSpawnError(
+        `command executor cannot run stage "${stage.name}" with executor.kind=${stage.executor.kind}`,
+      );
+    }
 
-      const executor = stage.executor;
-      const workspaceRoot = input.workspaceRoot ?? process.cwd();
-      const cwd = executor.cwd ? join(workspaceRoot, executor.cwd) : workspaceRoot;
-      const env = buildChildEnv(input, executor.env);
-      const stdoutCap = DEFAULT_COMMAND_STDOUT_CAP_BYTES;
-      const timeoutMs = stage.timeoutMs ?? defaultTimeoutMs;
-      const startedAt = now();
+    // Fork refusal: synthetic instant failure, no child spawned.
+    if (input.isFromFork && stage.allowFork !== true) {
+      const message = formatForkRefusalMessage(stage.name);
+      onRefuse(stage, message);
+      const terminalOutcome: Exclude<CommandOutcome, { status: "running" }> = {
+        status: "failed",
+        errorMessage: message,
+        refused: true,
+      };
+      return {
+        runId: input.runId,
+        stageRunId: input.stageRunId,
+        stageName: stage.name,
+        startedAt: now(),
+        outcome: terminalOutcome,
+        done: Promise.resolve(terminalOutcome),
+        cancel: () => undefined,
+      };
+    }
 
-      return new Promise<CommandOutcome>((resolve) => {
-        let child;
-        try {
-          child = spawnFn(executor.command, executor.args ?? [], {
-            cwd,
-            env,
-            stdio: ["ignore", "pipe", "pipe"],
-            // Windows installs node-based CLIs as `.cmd` shims that `spawn`
-            // can't resolve without going through cmd.exe. See
-            // docs/CROSS_PLATFORM.md.
-            shell: isWindows(),
-            // Detach the child into its own process group on Unix so a
-            // timeout kill can reach grandchildren (e.g. `sh -c 'sleep 30'`
-            // — without a group kill, sleep inherits the stdio pipes and
-            // `close` never fires). No effect on Windows; taskkill /T
-            // walks the tree by PID.
-            detached: !isWindows(),
-          });
-        } catch (err) {
-          resolve({
-            status: "failed",
-            errorMessage: `failed to spawn command "${executor.command}": ${
-              err instanceof Error ? err.message : String(err)
-            }`,
-          });
-          return;
-        }
+    const executor = stage.executor;
+    const workspaceRoot = input.workspaceRoot ?? process.cwd();
+    const cwd = executor.cwd ? join(workspaceRoot, executor.cwd) : workspaceRoot;
+    const env = buildChildEnv(input, executor.env);
+    const stdoutCap = DEFAULT_COMMAND_STDOUT_CAP_BYTES;
+    const timeoutMs = stage.timeoutMs ?? defaultTimeoutMs;
+    const startedAt = now();
 
-        const stdoutChunks: Buffer[] = [];
-        const stderrChunks: Buffer[] = [];
-        let stdoutBytes = 0;
-        let stderrBytes = 0;
-        let truncated = false;
-        let stderrTruncated = false;
-        let settled = false;
-        let timedOut = false;
-        let killTimer: NodeJS.Timeout | null = null;
-        let forceTimer: NodeJS.Timeout | null = null;
-
-        const clearTimers = () => {
-          if (killTimer) clearTimeout(killTimer);
-          if (forceTimer) clearTimeout(forceTimer);
-          killTimer = null;
-          forceTimer = null;
-        };
-
-        const settle = (outcome: CommandOutcome) => {
-          if (settled) return;
-          settled = true;
-          clearTimers();
-          resolve(outcome);
-        };
-
-        if (timeoutMs > 0 && Number.isFinite(timeoutMs)) {
-          killTimer = setTimeout(() => {
-            if (settled) return;
-            timedOut = true;
-            // Best-effort graceful shutdown of the whole process tree,
-            // escalating to SIGKILL after a short grace window so a wedged
-            // child (or shell grandchild) can't hold the pipeline. Fire and
-            // forget — `close` resolves the outer promise.
-            if (child.pid !== undefined) {
-              void killProcessTree(child.pid, "SIGTERM");
-            }
-            forceTimer = setTimeout(() => {
-              if (child.pid !== undefined) {
-                void killProcessTree(child.pid, "SIGKILL");
-              }
-            }, COMMAND_KILL_GRACE_MS);
-          }, timeoutMs);
-        }
-
-        child.stdout?.on("data", (chunk: Buffer) => {
-          stdoutBytes += chunk.length;
-          if (stdoutBytes <= stdoutCap) {
-            stdoutChunks.push(chunk);
-          } else if (!truncated) {
-            truncated = true;
-            // Keep everything up to the cap; drop overflow rather than OOM.
-            const overflow = stdoutBytes - stdoutCap;
-            if (chunk.length > overflow) {
-              stdoutChunks.push(chunk.subarray(0, chunk.length - overflow));
-            }
-          }
-        });
-        child.stderr?.on("data", (chunk: Buffer) => {
-          stderrBytes += chunk.length;
-          if (stderrBytes <= DEFAULT_COMMAND_STDERR_CAP_BYTES) {
-            stderrChunks.push(chunk);
-          } else if (!stderrTruncated) {
-            stderrTruncated = true;
-            // Keep everything up to the cap; drop overflow rather than OOM.
-            const overflow = stderrBytes - DEFAULT_COMMAND_STDERR_CAP_BYTES;
-            if (chunk.length > overflow) {
-              stderrChunks.push(chunk.subarray(0, chunk.length - overflow));
-            }
-          }
-        });
-        child.on("error", (err) => {
-          settle({
-            status: "failed",
-            errorMessage: `command "${executor.command}" failed: ${err.message}`,
-          });
-        });
-        child.on("close", (code, signal) => {
-          const stderrRaw = Buffer.concat(stderrChunks).toString("utf-8").trim();
-          const stderr = stderrTruncated ? `${stderrRaw}\n[stderr truncated]` : stderrRaw;
-          if (timedOut) {
-            const elapsed = now() - startedAt;
-            settle({
-              status: "failed",
-              errorMessage: `command "${executor.command}" timed out after ${timeoutMs}ms (ran for ${elapsed}ms)${stderr ? `: ${stderr}` : ""}`,
-            });
-            return;
-          }
-          if (truncated) {
-            settle({
-              status: "failed",
-              errorMessage: `command "${executor.command}" stdout exceeded ${stdoutCap} bytes${stderr ? `: ${stderr}` : ""}`,
-            });
-            return;
-          }
-          if (signal) {
-            settle({
-              status: "failed",
-              errorMessage: `command "${executor.command}" terminated by signal ${signal}${stderr ? `: ${stderr}` : ""}`,
-            });
-            return;
-          }
-          if (code !== 0) {
-            settle({
-              status: "failed",
-              errorMessage: `command "${executor.command}" exited ${code}${stderr ? `: ${stderr}` : ""}`,
-            });
-            return;
-          }
-          const stdout = Buffer.concat(stdoutChunks).toString("utf-8");
-          let artifacts: ArtifactInput[];
-          try {
-            artifacts = parseStdoutFindings(stdout);
-          } catch (err) {
-            settle({
-              status: "failed",
-              errorMessage: `command "${executor.command}" produced unparseable findings: ${
-                err instanceof Error ? err.message : String(err)
-              }`,
-            });
-            return;
-          }
-          settle({ status: "completed", artifacts });
-        });
+    // Attempt to spawn the child. Synchronous spawn errors produce an instant
+    // failed handle without throwing from startStage.
+    let child;
+    try {
+      child = spawnFn(executor.command, executor.args ?? [], {
+        cwd,
+        env,
+        stdio: ["ignore", "pipe", "pipe"],
+        // Windows installs node-based CLIs as `.cmd` shims that `spawn`
+        // can't resolve without going through cmd.exe. See
+        // docs/CROSS_PLATFORM.md.
+        shell: isWindows(),
+        // Detach the child into its own process group on Unix so a
+        // timeout kill can reach grandchildren (e.g. `sh -c 'sleep 30'`
+        // — without a group kill, sleep inherits the stdio pipes and
+        // `close` never fires). No effect on Windows; taskkill /T
+        // walks the tree by PID.
+        detached: !isWindows(),
       });
-    },
-  };
+    } catch (err) {
+      const terminalOutcome: Exclude<CommandOutcome, { status: "running" }> = {
+        status: "failed",
+        errorMessage: `failed to spawn command "${executor.command}": ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      };
+      return {
+        runId: input.runId,
+        stageRunId: input.stageRunId,
+        stageName: stage.name,
+        startedAt,
+        outcome: terminalOutcome,
+        done: Promise.resolve(terminalOutcome),
+        cancel: () => undefined,
+      };
+    }
+
+    // Child spawned. Build the handle with shared mutable state.
+    const stdoutChunks: Buffer[] = [];
+    const stderrChunks: Buffer[] = [];
+    let stdoutBytes = 0;
+    let stderrBytes = 0;
+    let truncated = false;
+    let stderrTruncated = false;
+    let settled = false;
+    let cancelled = false;
+    let timedOut = false;
+    let killTimer: NodeJS.Timeout | null = null;
+    let forceTimer: NodeJS.Timeout | null = null;
+
+    // `resolveOutcome` is populated by the Promise constructor below.
+    let resolveOutcome!: (
+      outcome: Exclude<CommandOutcome, { status: "running" }>,
+    ) => void;
+
+    const done = new Promise<Exclude<CommandOutcome, { status: "running" }>>(
+      (resolve) => {
+        resolveOutcome = resolve;
+      },
+    );
+
+    // `handle.outcome` starts null; settle() populates it and resolves `done`.
+    const handle: RunningCommandStage = {
+      runId: input.runId,
+      stageRunId: input.stageRunId,
+      stageName: stage.name,
+      startedAt,
+      outcome: null,
+      done,
+      cancel: () => {
+        if (settled || cancelled) return;
+        cancelled = true;
+        clearTimers();
+        if (child.pid !== undefined) {
+          void killProcessTree(child.pid, "SIGTERM");
+          forceTimer = setTimeout(() => {
+            if (child.pid !== undefined) {
+              void killProcessTree(child.pid, "SIGKILL");
+            }
+          }, COMMAND_KILL_GRACE_MS);
+        }
+        // Settle immediately with cancelled failure so pollStage / done
+        // see the terminal outcome without waiting for the close event.
+        settle({
+          status: "failed",
+          errorMessage: `command "${executor.command}" was cancelled`,
+        });
+      },
+    };
+
+    const clearTimers = () => {
+      if (killTimer) clearTimeout(killTimer);
+      if (forceTimer) clearTimeout(forceTimer);
+      killTimer = null;
+      forceTimer = null;
+    };
+
+    const settle = (outcome: Exclude<CommandOutcome, { status: "running" }>) => {
+      if (settled) return;
+      settled = true;
+      clearTimers();
+      handle.outcome = outcome;
+      resolveOutcome(outcome);
+    };
+
+    if (timeoutMs > 0 && Number.isFinite(timeoutMs)) {
+      killTimer = setTimeout(() => {
+        if (settled) return;
+        timedOut = true;
+        // Best-effort graceful shutdown of the whole process tree,
+        // escalating to SIGKILL after a short grace window so a wedged
+        // child (or shell grandchild) can't hold the pipeline. Fire and
+        // forget — `close` resolves the outer promise.
+        if (child.pid !== undefined) {
+          void killProcessTree(child.pid, "SIGTERM");
+        }
+        forceTimer = setTimeout(() => {
+          if (child.pid !== undefined) {
+            void killProcessTree(child.pid, "SIGKILL");
+          }
+        }, COMMAND_KILL_GRACE_MS);
+      }, timeoutMs);
+    }
+
+    child.stdout?.on("data", (chunk: Buffer) => {
+      stdoutBytes += chunk.length;
+      if (stdoutBytes <= stdoutCap) {
+        stdoutChunks.push(chunk);
+      } else if (!truncated) {
+        truncated = true;
+        // Keep everything up to the cap; drop overflow rather than OOM.
+        const overflow = stdoutBytes - stdoutCap;
+        if (chunk.length > overflow) {
+          stdoutChunks.push(chunk.subarray(0, chunk.length - overflow));
+        }
+      }
+    });
+    child.stderr?.on("data", (chunk: Buffer) => {
+      stderrBytes += chunk.length;
+      if (stderrBytes <= DEFAULT_COMMAND_STDERR_CAP_BYTES) {
+        stderrChunks.push(chunk);
+      } else if (!stderrTruncated) {
+        stderrTruncated = true;
+        // Keep everything up to the cap; drop overflow rather than OOM.
+        const overflow = stderrBytes - DEFAULT_COMMAND_STDERR_CAP_BYTES;
+        if (chunk.length > overflow) {
+          stderrChunks.push(chunk.subarray(0, chunk.length - overflow));
+        }
+      }
+    });
+    child.on("error", (err) => {
+      settle({
+        status: "failed",
+        errorMessage: `command "${executor.command}" failed: ${err.message}`,
+      });
+    });
+    child.on("close", (code, signal) => {
+      // If we already settled (e.g. cancel() was called), don't overwrite.
+      if (settled) return;
+      const stderrRaw = Buffer.concat(stderrChunks).toString("utf-8").trim();
+      const stderr = stderrTruncated ? `${stderrRaw}\n[stderr truncated]` : stderrRaw;
+      if (timedOut) {
+        const elapsed = now() - startedAt;
+        settle({
+          status: "failed",
+          errorMessage: `command "${executor.command}" timed out after ${timeoutMs}ms (ran for ${elapsed}ms)${stderr ? `: ${stderr}` : ""}`,
+        });
+        return;
+      }
+      if (truncated) {
+        settle({
+          status: "failed",
+          errorMessage: `command "${executor.command}" stdout exceeded ${stdoutCap} bytes${stderr ? `: ${stderr}` : ""}`,
+        });
+        return;
+      }
+      if (signal) {
+        settle({
+          status: "failed",
+          errorMessage: `command "${executor.command}" terminated by signal ${signal}${stderr ? `: ${stderr}` : ""}`,
+        });
+        return;
+      }
+      if (code !== 0) {
+        settle({
+          status: "failed",
+          errorMessage: `command "${executor.command}" exited ${code}${stderr ? `: ${stderr}` : ""}`,
+        });
+        return;
+      }
+      const stdout = Buffer.concat(stdoutChunks).toString("utf-8");
+      let artifacts: ArtifactInput[];
+      try {
+        artifacts = parseStdoutFindings(stdout);
+      } catch (err) {
+        settle({
+          status: "failed",
+          errorMessage: `command "${executor.command}" produced unparseable findings: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        });
+        return;
+      }
+      settle({ status: "completed", artifacts });
+    });
+
+    return handle;
+  }
+
+  function pollStage(handle: RunningCommandStage): CommandOutcome {
+    return handle.outcome ?? { status: "running" };
+  }
+
+  async function cancelStage(handle: RunningCommandStage): Promise<void> {
+    handle.cancel();
+  }
+
+  async function run(
+    input: CommandStartInput,
+  ): Promise<Exclude<CommandOutcome, { status: "running" }>> {
+    // Let CommandExecutorSpawnError propagate to the caller (engine catches it).
+    const handle = await startStage(input);
+    return handle.done;
+  }
+
+  return { startStage, pollStage, cancelStage, run };
 }
 
 function buildChildEnv(

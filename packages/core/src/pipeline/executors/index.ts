@@ -11,6 +11,7 @@ export {
 
 export {
   createCommandExecutor,
+  CommandExecutorSpawnError,
   formatForkRefusalMessage,
   DEFAULT_COMMAND_TIMEOUT_MS,
   DEFAULT_COMMAND_STDOUT_CAP_BYTES,
@@ -20,6 +21,7 @@ export {
   type CommandStageExecutor,
   type CommandStartInput,
   type CommandOutcome,
+  type RunningCommandStage,
 } from "./command.js";
 
 export { parseFindingsJsonl, coerceArtifactInput } from "./findings-parser.js";
