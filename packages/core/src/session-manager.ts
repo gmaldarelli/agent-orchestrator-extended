@@ -322,29 +322,33 @@ function parseLifecycleFromRaw(
   }
 }
 
+interface MetadataToSessionOptions {
+  projectId: string;
+  sessionPrefix?: string;
+  createdAt?: Date;
+  modifiedAt?: Date;
+  workspacePathFallback?: string;
+}
+
 /** Reconstruct a Session object from raw metadata key=value pairs. */
 function metadataToSession(
   sessionId: SessionId,
   meta: Record<string, string>,
-  projectId: string,
-  sessionPrefix?: string,
-  createdAt?: Date,
-  modifiedAt?: Date,
-  workspacePathFallback?: string,
+  options: MetadataToSessionOptions,
 ): Session {
   const sessionKind =
     meta["role"] === "orchestrator" ||
-    (sessionPrefix
-      ? new RegExp(`^${escapeRegex(sessionPrefix)}-orchestrator-\\d+$`).test(sessionId)
+    (options.sessionPrefix
+      ? new RegExp(`^${escapeRegex(options.sessionPrefix)}-orchestrator-\\d+$`).test(sessionId)
       : false)
       ? "orchestrator"
       : "worker";
   return sessionFromMetadata(sessionId, meta, {
-    projectId,
-    workspacePathFallback,
+    projectId: options.projectId,
+    workspacePathFallback: options.workspacePathFallback,
     sessionKind,
-    createdAt,
-    lastActivityAt: modifiedAt ?? new Date(),
+    createdAt: options.createdAt,
+    lastActivityAt: options.modifiedAt ?? new Date(),
   });
 }
 
@@ -992,14 +996,39 @@ export function createSessionManager(deps: SessionManagerDeps): OpenCodeSessionM
    */
   const TERMINAL_SESSION_STATUSES = new Set(["killed", "done", "merged", "terminated", "cleanup"]);
 
+  function hasPersistedNativeRestoreMetadata(session: Session, agent: Agent): boolean {
+    const metadata = session.metadata ?? {};
+
+    switch (agent.name) {
+      case "claude-code":
+        return typeof metadata["claudeSessionUuid"] === "string" && metadata["claudeSessionUuid"].trim().length > 0;
+      case "codex":
+        return typeof metadata["codexThreadId"] === "string" && metadata["codexThreadId"].trim().length > 0;
+      case "opencode":
+        return asValidOpenCodeSessionId(metadata["opencodeSessionId"]) !== null;
+      default:
+        return false;
+    }
+  }
+
+  function canDiscoverSessionInfoAfterRuntimeExit(agent: Agent): boolean {
+    return agent.name === "claude-code" || agent.name === "codex";
+  }
+
   async function enrichSessionWithRuntimeState(
     session: Session,
     plugins: ReturnType<typeof resolvePlugins>,
     handleFromMetadata: boolean,
     sessionsDir: string,
   ): Promise<void> {
-    async function enrichAgentSessionInfo(): Promise<void> {
+    async function persistAgentSessionInfo(options?: { skipIfNativeRestoreMetadataPresent?: boolean }): Promise<void> {
       if (!plugins.agent) return;
+      if (
+        options?.skipIfNativeRestoreMetadataPresent &&
+        hasPersistedNativeRestoreMetadata(session, plugins.agent)
+      ) {
+        return;
+      }
 
       let info: Awaited<ReturnType<Agent["getSessionInfo"]>>;
       try {
@@ -1013,6 +1042,11 @@ export function createSessionManager(deps: SessionManagerDeps): OpenCodeSessionM
 
       session.agentInfo = info;
       const metadataUpdates = info.metadata ?? {};
+      const allAlreadyPersisted = Object.keys(metadataUpdates).every(
+        (key) => session.metadata?.[key] === metadataUpdates[key],
+      );
+      if (allAlreadyPersisted) return;
+
       if (Object.keys(metadataUpdates).length > 0) {
         try {
           updateMetadata(sessionsDir, session.id, metadataUpdates);
@@ -1064,7 +1098,11 @@ export function createSessionManager(deps: SessionManagerDeps): OpenCodeSessionM
             activity: "exited",
             source: "runtime",
           });
-          await enrichAgentSessionInfo();
+          // Dead-runtime session info discovery is intentionally limited to
+          // agents that recover restore metadata from persisted local files.
+          if (plugins.agent && canDiscoverSessionInfoAfterRuntimeExit(plugins.agent)) {
+            await persistAgentSessionInfo({ skipIfNativeRestoreMetadataPresent: true });
+          }
           return;
         }
       } catch {
@@ -1102,7 +1140,7 @@ export function createSessionManager(deps: SessionManagerDeps): OpenCodeSessionM
       }
 
       // Enrich with agent session info (summary, cost, native restore metadata).
-      await enrichAgentSessionInfo();
+      await persistAgentSessionInfo();
     }
   }
 
@@ -1887,11 +1925,13 @@ export function createSessionManager(deps: SessionManagerDeps): OpenCodeSessionM
       const session = metadataToSession(
         sessionName,
         raw,
-        sessionProjectId,
-        project.sessionPrefix,
-        createdAt,
-        modifiedAt,
-        project.path,
+        {
+          projectId: sessionProjectId,
+          sessionPrefix: project.sessionPrefix,
+          createdAt,
+          modifiedAt,
+          workspacePathFallback: project.path,
+        },
       );
       const selection = resolveSelectionForSession(project, sessionName, raw);
       const effectiveAgentName = selection.agentName;
@@ -2002,11 +2042,13 @@ export function createSessionManager(deps: SessionManagerDeps): OpenCodeSessionM
       const session = metadataToSession(
         sessionId,
         repaired.raw,
-        projectId,
-        project.sessionPrefix,
-        createdAt,
-        modifiedAt,
-        project.path,
+        {
+          projectId,
+          sessionPrefix: project.sessionPrefix,
+          createdAt,
+          modifiedAt,
+          workspacePathFallback: project.path,
+        },
       );
 
       const selection = resolveSelectionForSession(project, sessionId, repaired.raw);
@@ -2780,11 +2822,11 @@ export function createSessionManager(deps: SessionManagerDeps): OpenCodeSessionM
     const session = metadataToSession(
       sessionId,
       raw,
-      projectId,
-      project.sessionPrefix,
-      undefined,
-      undefined,
-      project.path,
+      {
+        projectId,
+        sessionPrefix: project.sessionPrefix,
+        workspacePathFallback: project.path,
+      },
     );
     const plugins = resolvePlugins(project, selection.agentName);
     await enrichSessionWithRuntimeState(session, plugins, true, sessionsDir);
@@ -2921,6 +2963,8 @@ export function createSessionManager(deps: SessionManagerDeps): OpenCodeSessionM
         launchCommand = restoreCmd;
         updateMetadata(sessionsDir, sessionId, { restoreFallbackReason: "" });
       } else {
+        // Agents with native restore can still launch fresh when no resumable
+        // session metadata exists; this keeps restore from becoming a hard stop.
         const reason = `${plugins.agent.name}.getRestoreCommand returned null`;
         updateMetadata(sessionsDir, sessionId, {
           restoreFallbackReason: reason,
