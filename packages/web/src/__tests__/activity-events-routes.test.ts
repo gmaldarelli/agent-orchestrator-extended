@@ -381,6 +381,29 @@ describe("API mutation routes emit activity events (api source)", () => {
       ).toBe(false);
     });
 
+    it.each([
+      ["spawn", false, mockSessionManager.spawnOrchestrator],
+      ["clean relaunch", true, mockSessionManager.relaunchOrchestrator],
+    ])(
+      "POST /api/orchestrators does not emit api.orchestrator_spawn_failed when core %s throws",
+      async (_name, clean, method) => {
+        (method as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error("runtime failed"));
+        const req = makeRequest("/api/orchestrators", {
+          method: "POST",
+          body: JSON.stringify({ projectId: "my-app", clean }),
+          headers: { "Content-Type": "application/json" },
+        });
+        const res = await orchestratorsPOST(req);
+
+        expect(res.status).toBe(500);
+        expect(
+          recorded.mock.calls.some(
+            ([event]) => (event as { kind: string }).kind === "api.orchestrator_spawn_failed",
+          ),
+        ).toBe(false);
+      },
+    );
+
     it("POST /api/sessions/:id/send emits api.session_message_failed on unexpected error", async () => {
       (mockSessionManager.send as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
         new Error("write failed"),

@@ -3,7 +3,10 @@ import { generateOrchestratorPrompt, recordActivityEvent } from "@aoagents/ao-co
 import { getServices } from "@/lib/services";
 import { validateIdentifier, validateConfiguredProject } from "@/lib/validation";
 
-function classifySpawnError(projectId: string, error: unknown): {
+function classifySpawnError(
+  projectId: string,
+  error: unknown,
+): {
   status: number;
   payload: Record<string, unknown>;
 } {
@@ -81,15 +84,6 @@ export async function POST(request: NextRequest) {
     );
   } catch (err) {
     const classified = classifySpawnError(body.projectId as string, err);
-    const reason = err instanceof Error ? err.message : "Failed to spawn orchestrator";
-    recordActivityEvent({
-      projectId: typeof body.projectId === "string" ? body.projectId : undefined,
-      source: "api",
-      kind: "api.orchestrator_spawn_failed",
-      level: classified.status === 409 ? "warn" : "error",
-      summary: `orchestrator spawn failed: ${reason}`,
-      data: { reason, statusCode: classified.status },
-    });
     return NextResponse.json(classified.payload, { status: classified.status });
   }
 }
