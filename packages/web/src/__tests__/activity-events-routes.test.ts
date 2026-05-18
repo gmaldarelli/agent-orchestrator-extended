@@ -110,6 +110,13 @@ const mockSessionManager: SessionManager = {
       metadata: { role: "orchestrator" },
     }),
   ),
+  relaunchOrchestrator: vi.fn(async () =>
+    makeSession({
+      id: "my-app-orchestrator",
+      projectId: "my-app",
+      metadata: { role: "orchestrator" },
+    }),
+  ),
   ensureOrchestrator: vi.fn(),
   remap: vi.fn(async () => "ses_mock"),
   restore: vi.fn(async (id: string) => {
