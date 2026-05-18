@@ -45,6 +45,28 @@ describe("activity events: storage migration", () => {
     rmSync(testDir, { recursive: true, force: true });
   });
 
+  it("emits migration.completed when there is nothing to migrate", async () => {
+    const result = await migrateStorage({
+      aoBaseDir,
+      globalConfigPath: configPath,
+      force: true,
+      log: () => {},
+    });
+
+    expect(result.projects).toBe(0);
+    const calls = vi.mocked(recordActivityEvent).mock.calls.map((c) => c[0]);
+    const completed = calls.find((c) => c.kind === "migration.completed");
+    expect(completed).toBeDefined();
+    expect(completed?.source).toBe("migration");
+    expect(completed?.level).toBe("info");
+    expect(completed?.data).toMatchObject({
+      projectsMigrated: 0,
+      sessions: 0,
+      worktrees: 0,
+      projectErrors: 0,
+    });
+  });
+
   it("emits migration.completed with totals when migration succeeds", async () => {
     const hashDir = join(aoBaseDir, "aaaaaa000000-myproject");
     mkdirSync(join(hashDir, "sessions"), { recursive: true });

@@ -1239,7 +1239,7 @@ export async function migrateStorage(options: MigrationOptions = {}): Promise<Mi
     if (!dryRun && existsSync(markerPath)) {
       try { unlinkSync(markerPath); } catch { /* best-effort */ }
     }
-    return {
+    const totals: MigrationResult = {
       projects: 0,
       sessions: 0,
       worktrees: 0,
@@ -1248,6 +1248,24 @@ export async function migrateStorage(options: MigrationOptions = {}): Promise<Mi
       claudeSessionsRelinked: 0,
       codexSessionsRewritten: 0,
     };
+    recordActivityEvent({
+      source: "migration",
+      kind: "migration.completed",
+      level: "info",
+      summary: "migration completed: 0 project(s), 0 session(s)",
+      data: {
+        dryRun,
+        projectsMigrated: totals.projects,
+        sessions: totals.sessions,
+        worktrees: totals.worktrees,
+        strayWorktreesMoved: totals.strayWorktreesMoved,
+        claudeSessionsRelinked: totals.claudeSessionsRelinked,
+        codexSessionsRewritten: totals.codexSessionsRewritten,
+        emptyDirsDeleted: totals.emptyDirsDeleted,
+        projectErrors: 0,
+      },
+    });
+    return totals;
   }
 
   log(`Found ${hashDirs.length} legacy director${hashDirs.length === 1 ? "y" : "ies"}.`);
