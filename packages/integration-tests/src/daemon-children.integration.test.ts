@@ -60,10 +60,12 @@ describe.skipIf(!canRun)("daemon child reaping (integration)", () => {
   let configPath: string;
   let startPid: number | undefined;
   let port: number;
+  let directTerminalPort: number;
 
   beforeEach(async () => {
     tmpHome = await realpath(await mkdtemp(join(tmpdir(), "ao-daemon-int-home-")));
     port = await getFreePort();
+    directTerminalPort = await getFreePort();
     repoPath = join(tmpHome, "repo");
     mkdirSync(repoPath, { recursive: true });
     await execFileAsync("git", ["init"], { cwd: repoPath });
@@ -115,6 +117,7 @@ describe.skipIf(!canRun)("daemon child reaping (integration)", () => {
       AO_CONFIG_PATH: configPath,
       AO_GLOBAL_CONFIG: configPath,
       AO_SHUTDOWN_GRACE_MS: "15000",
+      DIRECT_TERMINAL_PORT: String(directTerminalPort),
       PORT: String(port),
     };
     const start = spawn(tsxBin, [cliEntry, "start", "--no-orchestrator", "--reap-orphans"], {
