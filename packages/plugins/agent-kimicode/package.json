@@ -1,6 +1,6 @@
 {
   "name": "@aoagents/ao-plugin-agent-kimicode",
-  "version": "0.8.0",
+  "version": "0.0.0-nightly-6d48022c876bd6e82b9aad1f0c60f8c5c7e2eaae",
   "description": "Agent plugin: Kimi Code CLI (MoonshotAI)",
   "license": "MIT",
   "type": "module",
