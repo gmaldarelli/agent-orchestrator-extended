@@ -75,12 +75,19 @@ class LinearNetworkError extends Error {
   }
 }
 
+class LinearTimeoutError extends Error {
+  constructor() {
+    super("Linear API request timed out after 30s");
+  }
+}
+
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function isRetryableDirectTransportError(err: unknown): boolean {
   if (err instanceof LinearHttpError) return err.transient;
+  if (err instanceof LinearTimeoutError) return true;
   return err instanceof LinearNetworkError;
 }
 
@@ -159,21 +166,22 @@ function createDirectTransport(): GraphQLTransport {
           },
         );
 
-      req.setTimeout(30_000, () => {
-        settle(() => {
-          req.destroy();
-          recordTransportActivityEvent({
-            source: "tracker",
-            kind: "tracker.api_timeout",
-            level: "warn",
-            summary: "Linear API request timed out after 30s",
-            data: {
-              plugin: "tracker-linear",
-              transport: "direct",
-              timeoutMs: 30_000,
-            },
+        req.setTimeout(30_000, () => {
+          settle(() => {
+            req.destroy();
+            recordTransportActivityEvent({
+              source: "tracker",
+              kind: "tracker.api_timeout",
+              level: "warn",
+              summary: "Linear API request timed out after 30s",
+              data: {
+                plugin: "tracker-linear",
+                transport: "direct",
+                timeoutMs: 30_000,
+              },
+            });
+            reject(new LinearTimeoutError());
           });
-          reject(new Error("Linear API request timed out after 30s"));
         });
 
         req.on("error", (err) => settle(() => reject(new LinearNetworkError(err.message))));
