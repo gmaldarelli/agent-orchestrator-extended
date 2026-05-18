@@ -38,12 +38,19 @@ export async function readCanvases(workspacePath: string): Promise<CanvasArtifac
     throw err;
   }
 
-  const canvases: CanvasArtifact[] = [];
+  // Two-pass to bound I/O when a buggy agent emits 1000s of canvas files.
+  // Pass 1 (cheap, all entries): lstat to filter non-regular + oversized,
+  // collect {name, mtimeMs} for the survivors. lstat is cheap; readFile +
+  // JSON.parse + Zod validate is the expensive part we want to bound.
+  // Pass 2 (capped): sort by mtime desc, read + validate the newest, break
+  // once CANVAS_MAX_PER_SESSION valid canvases are collected. Hard ceiling
+  // CANVAS_MAX_PER_SESSION * 4 file reads so the loop can't be starved by a
+  // pile of invalid newer files into reading everything anyway.
+  type Candidate = { name: string; mtimeMs: number };
+  const candidates: Candidate[] = [];
   for (const entry of entries) {
     if (!entry.endsWith(".json")) continue;
     const filePath = join(dir, entry);
-
-    let size: number;
     try {
       const st = await lstat(filePath);
       // Reject anything that isn't a regular file. lstat (not stat) avoids
@@ -53,14 +60,31 @@ export async function readCanvases(workspacePath: string): Promise<CanvasArtifac
         console.warn(`canvas: dropping ${entry} (not a regular file)`);
         continue;
       }
-      size = st.size;
+      if (st.size > CANVAS_MAX_FILE_BYTES) {
+        console.warn(`canvas: dropping ${entry} (${st.size} bytes exceeds ${CANVAS_MAX_FILE_BYTES})`);
+        continue;
+      }
+      candidates.push({ name: entry, mtimeMs: st.mtimeMs });
     } catch {
-      continue;
+      // file vanished between readdir and lstat, or unreadable — skip silently
     }
-    if (size > CANVAS_MAX_FILE_BYTES) {
-      console.warn(`canvas: dropping ${entry} (${size} bytes exceeds ${CANVAS_MAX_FILE_BYTES})`);
-      continue;
+  }
+
+  // Newest-first so the read-loop can early-break at CANVAS_MAX_PER_SESSION
+  // and still keep the newest files (the design intent of the cap).
+  candidates.sort((a, b) => b.mtimeMs - a.mtimeMs);
+
+  const readBudget = CANVAS_MAX_PER_SESSION * 4;
+  const canvases: CanvasArtifact[] = [];
+  let reads = 0;
+  for (const { name } of candidates) {
+    if (canvases.length >= CANVAS_MAX_PER_SESSION) break;
+    if (reads >= readBudget) {
+      console.warn(`canvas: stopping at ${reads} reads (budget exhausted, ${candidates.length - reads} skipped)`);
+      break;
     }
+    reads++;
+    const filePath = join(dir, name);
 
     let raw: string;
     try {
@@ -73,27 +97,31 @@ export async function readCanvases(workspacePath: string): Promise<CanvasArtifac
     try {
       parsed = JSON.parse(raw);
     } catch {
-      console.warn(`canvas: dropping ${entry} (invalid JSON)`);
+      console.warn(`canvas: dropping ${name} (invalid JSON)`);
       continue;
     }
 
     const result = CanvasArtifactSchema.safeParse(parsed);
     if (!result.success) {
-      console.warn(`canvas: dropping ${entry} (schema invalid: ${result.error.issues[0]?.message ?? "unknown"})`);
+      console.warn(`canvas: dropping ${name} (schema invalid: ${result.error.issues[0]?.message ?? "unknown"})`);
       continue;
     }
     // The "core-" id prefix is reserved for canvases synthesized by core
     // (e.g. core-git-diff). Dropping it here prevents an agent file canvas
     // from shadowing the trusted synthesized version in API responses.
     if (result.data.id.startsWith("core-")) {
-      console.warn(`canvas: dropping ${entry} (id "${result.data.id}" uses reserved "core-" prefix)`);
+      console.warn(`canvas: dropping ${name} (id "${result.data.id}" uses reserved "core-" prefix)`);
       continue;
     }
     canvases.push(result.data);
   }
 
+  // Final sort by updatedAt (the canvas-supplied timestamp). mtime ordering
+  // was used to bound I/O; updatedAt is what the UI cares about and may
+  // differ if an agent rewrites a file without changing the canvas's
+  // updatedAt field.
   canvases.sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1));
-  return canvases.slice(0, CANVAS_MAX_PER_SESSION);
+  return canvases;
 }
 
 export async function synthesizeGitDiffCanvas(

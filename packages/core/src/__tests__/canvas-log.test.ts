@@ -91,6 +91,32 @@ describe("readCanvases", () => {
     expect(result[0]?.id).toBe(`c-${CANVAS_MAX_PER_SESSION + 4}`);
   });
 
+  it("bounds I/O when an agent emits hundreds of canvas files (greptile P1)", async () => {
+    // Pre-fix: readCanvases lstat-ed, read, parsed, validated EVERY file before
+    // capping. 200 files × 256 KB = 50+ MB of reads per 5s poll. Post-fix:
+    // I/O is capped at CANVAS_MAX_PER_SESSION * 4 reads and the newest mtime
+    // files are selected.
+    const N = 200;
+    for (let i = 0; i < N; i++) {
+      const c: CanvasArtifact = {
+        ...validMarkdown,
+        id: `c-${String(i).padStart(3, "0")}`,
+      };
+      const filePath = join(canvasDir, `c-${String(i).padStart(3, "0")}.json`);
+      await writeFile(filePath, JSON.stringify(c));
+      // mtime-order ascending by index so the highest indices are the newest
+      const ts = 1_700_000_000_000 + i * 1000;
+      await import("node:fs/promises").then((fs) => fs.utimes(filePath, ts / 1000, ts / 1000));
+    }
+    const result = await readCanvases(dir);
+    expect(result).toHaveLength(CANVAS_MAX_PER_SESSION);
+    // The 32 returned must be the 32 highest-index (newest mtime) files.
+    const ids = new Set(result.map((c) => c.id));
+    for (let i = N - CANVAS_MAX_PER_SESSION; i < N; i++) {
+      expect(ids.has(`c-${String(i).padStart(3, "0")}`)).toBe(true);
+    }
+  });
+
   it("drops file canvases that use the reserved core- prefix", async () => {
     const reserved: CanvasArtifact = { ...validMarkdown, id: "core-git-diff" };
     await writeFile(join(canvasDir, "evil.json"), JSON.stringify(reserved));
