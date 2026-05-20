@@ -1334,6 +1334,13 @@ export interface LifecycleConfig {
   mergeCleanupIdleGraceMs: number;
 }
 
+export interface ObservabilityConfig {
+  /** Minimum structured log level to persist/mirror. Defaults to "warn". */
+  logLevel: ObservabilityLevel;
+  /** Mirror structured observability logs to stderr. Defaults to false. */
+  stderr: boolean;
+}
+
 /** Top-level orchestrator configuration (from agent-orchestrator.yaml) */
 export interface OrchestratorConfig {
   /** Optional JSON Schema hint for editor autocomplete/validation. */
@@ -1368,6 +1375,12 @@ export interface OrchestratorConfig {
    * than dereferencing directly. Mirrors the `power?` pattern above.
    */
   lifecycle?: LifecycleConfig;
+
+  /**
+   * Process observability settings. Populated with defaults by Zod when loaded
+   * from YAML, but optional for hand-constructed tests.
+   */
+  observability?: ObservabilityConfig;
 
   /** Default plugin selections */
   defaults: DefaultPlugins;
@@ -1845,6 +1858,13 @@ export interface SessionManager {
   spawn(config: SessionSpawnConfig): Promise<Session>;
   spawnOrchestrator(config: OrchestratorSpawnConfig): Promise<Session>;
   ensureOrchestrator(config: OrchestratorSpawnConfig): Promise<Session>;
+  /**
+   * Replace the canonical orchestrator with a fresh one. If an orchestrator
+   * already exists for the project, it is killed, its metadata deleted, and a
+   * new orchestrator spawned with no carryover state. Ignores
+   * `orchestratorSessionStrategy` — replacement is the whole point.
+   */
+  relaunchOrchestrator(config: OrchestratorSpawnConfig): Promise<Session>;
   restore(sessionId: SessionId): Promise<Session>;
   list(projectId?: string): Promise<Session[]>;
   get(sessionId: SessionId): Promise<Session | null>;
@@ -1998,11 +2018,14 @@ export class ConfigNotFoundError extends Error {
   }
 }
 
+export type ProjectResolveErrorKind = "malformed" | "invalid" | "old-format";
+
 /** Thrown when a project cannot be resolved into an effective runtime config. */
 export class ProjectResolveError extends Error {
   constructor(
     public readonly projectId: string,
     message: string,
+    public readonly reasonKind?: ProjectResolveErrorKind,
   ) {
     super(message);
     this.name = "ProjectResolveError";

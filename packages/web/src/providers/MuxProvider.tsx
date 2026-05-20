@@ -1,7 +1,12 @@
 "use client";
 
 import React, { useEffect, useRef, useState, useMemo, useCallback, type ReactNode } from "react";
-import type { ClientMessage, ServerMessage, SessionPatch } from "@/lib/mux-protocol";
+import type {
+  ClientMessage,
+  DashboardNotificationRecord,
+  ServerMessage,
+  SessionPatch,
+} from "@/lib/mux-protocol";
 
 interface MuxContextValue {
   subscribeTerminal: (
@@ -15,11 +20,34 @@ interface MuxContextValue {
   resizeTerminal: (id: string, cols: number, rows: number, projectId?: string) => void;
   status: "connecting" | "connected" | "reconnecting" | "disconnected";
   sessions: SessionPatch[];
+  notifications: DashboardNotificationRecord[];
+  notificationLimit: number;
   /** Last session-fetch error from the server, null when healthy. */
   lastError: string | null;
+  /** Last notification-store error from the server, null when healthy. */
+  notificationError: string | null;
 }
 
 const MuxContext = React.createContext<MuxContextValue | undefined>(undefined);
+
+function notificationKey(record: DashboardNotificationRecord): string {
+  return `${record.id}:${record.receivedAt}`;
+}
+
+function mergeNotifications(
+  current: DashboardNotificationRecord[],
+  appended: DashboardNotificationRecord[],
+  limit: number,
+): DashboardNotificationRecord[] {
+  const byKey = new Map<string, DashboardNotificationRecord>();
+  for (const record of current) {
+    byKey.set(notificationKey(record), record);
+  }
+  for (const record of appended) {
+    byKey.set(notificationKey(record), record);
+  }
+  return [...byKey.values()].slice(-limit);
+}
 
 export function useMux(): MuxContextValue {
   const context = React.useContext(MuxContext);
@@ -97,7 +125,10 @@ export function MuxProvider({ children }: { children: ReactNode }) {
     "connecting" | "connected" | "reconnecting" | "disconnected"
   >("connecting");
   const [sessions, setSessions] = useState<SessionPatch[]>([]);
+  const [notifications, setNotifications] = useState<DashboardNotificationRecord[]>([]);
+  const [notificationLimit, setNotificationLimit] = useState(50);
   const [lastError, setLastError] = useState<string | null>(null);
+  const [notificationError, setNotificationError] = useState<string | null>(null);
   const reconnectAttempt = useRef(0);
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const runtimeConfigRef = useRef<{
@@ -147,7 +178,7 @@ export function MuxProvider({ children }: { children: ReactNode }) {
         // Always subscribe to sessions
         const subMsg: ClientMessage = {
           ch: "subscribe",
-          topics: ["sessions"],
+          topics: ["sessions", "notifications"],
         };
         ws.send(JSON.stringify(subMsg));
       });
@@ -195,6 +226,20 @@ export function MuxProvider({ children }: { children: ReactNode }) {
               setLastError(null);
             } else if (msg.type === "error") {
               setLastError(msg.error);
+            }
+          } else if (msg.ch === "notifications") {
+            if (msg.type === "snapshot") {
+              setNotificationLimit(msg.limit);
+              setNotifications(msg.notifications.slice(-msg.limit));
+              setNotificationError(null);
+            } else if (msg.type === "append") {
+              setNotificationLimit(msg.limit);
+              setNotifications((current) =>
+                mergeNotifications(current, msg.notifications, msg.limit),
+              );
+              setNotificationError(null);
+            } else if (msg.type === "error") {
+              setNotificationError(msg.error);
             }
           }
         } catch (err) {
@@ -369,7 +414,10 @@ export function MuxProvider({ children }: { children: ReactNode }) {
       resizeTerminal,
       status,
       sessions,
+      notifications,
+      notificationLimit,
       lastError,
+      notificationError,
     }),
     [
       subscribeTerminal,
@@ -379,7 +427,10 @@ export function MuxProvider({ children }: { children: ReactNode }) {
       resizeTerminal,
       status,
       sessions,
+      notifications,
+      notificationLimit,
       lastError,
+      notificationError,
     ],
   );
 
