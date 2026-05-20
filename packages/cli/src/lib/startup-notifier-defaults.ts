@@ -224,12 +224,13 @@ export function ensureStartupNotifierDefaults(options: StartupNotifierDefaultsOp
 
   const dashboardConfigured = configuredPlugin(notifiers, "dashboard") === "dashboard";
   const desktopConfigured = configuredPlugin(notifiers, "desktop") === "desktop";
+  const shouldRemoveDefaultDesktopRouting = desktopMode === "disable-default" && !desktopConfigured;
 
   for (const priority of NOTIFICATION_PRIORITIES) {
     const existingRoute = sanitizeNotifierReferences(notifiers, routing[priority]);
     let nextRoute = existingRoute;
 
-    if (desktopMode === "disable-default") {
+    if (shouldRemoveDefaultDesktopRouting) {
       nextRoute = nextRoute.filter((notifierName) => notifierName !== "desktop");
     } else if (shouldManageDesktopRouting && desktopConfigured) {
       nextRoute = nextRoute.filter((notifierName) => notifierName !== "desktop");

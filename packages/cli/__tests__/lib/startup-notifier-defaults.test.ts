@@ -124,6 +124,41 @@ describe("startup notifier defaults", () => {
     });
   });
 
+  it("preserves custom desktop routing when startup AO Notifier.app setup cannot complete", () => {
+    writeFileSync(
+      configPath,
+      [
+        "port: 3000",
+        "defaults:",
+        "  notifiers: []",
+        "notifiers:",
+        "  desktop:",
+        "    plugin: desktop",
+        "    backend: terminal-notifier",
+        "    dashboardUrl: http://localhost:3000",
+        "notificationRouting:",
+        "  urgent: [desktop]",
+        "projects: {}",
+        "",
+      ].join("\n"),
+    );
+
+    expect(
+      ensureStartupNotifierDefaults({
+        configPath,
+        dashboardUrl: "http://localhost:3000",
+        desktopMode: "disable-default",
+      }),
+    ).toBe(true);
+
+    const parsed = readConfig();
+    expect(parsed.notifiers?.["desktop"]).toMatchObject({
+      plugin: "desktop",
+      backend: "terminal-notifier",
+    });
+    expect(parsed.notificationRouting?.urgent).toEqual(["desktop", "dashboard"]);
+  });
+
   it("preserves configured manual opt-in notifiers while removing only implicit manual defaults", () => {
     writeFileSync(
       configPath,
