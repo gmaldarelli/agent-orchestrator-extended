@@ -639,6 +639,37 @@ describe("update command", () => {
       expect(mockSpawn.mock.calls[1][1]).toEqual(["--version"]);
     });
 
+    it("cleans up orphaned active sessions without starting a daemon that was not running", async () => {
+      mockGetRunning.mockReset();
+      mockGetRunning.mockResolvedValue(null);
+      mockExistsSync.mockReturnValue(true);
+      mockLoadGlobalConfig.mockReturnValue({
+        projects: { "my-app": { path: "/tmp/foo" } },
+      });
+      mockSessions.value = [{ id: "orphan-1", status: "working", projectId: "my-app" }];
+      mockSpawn.mockImplementation((cmd: string, args: string[]) => {
+        if (cmd === "ao" && args[0] === "stop") {
+          mockSessions.value = [];
+          return createMockChild(0, undefined, { stdout: "" });
+        }
+        if (cmd === "ao" && args[0] === "--version") {
+          return createMockChild(0, undefined, { stdout: "0.3.0\n" });
+        }
+        return createMockChild(0, undefined, { stdout: "" });
+      });
+
+      await program.parseAsync(["node", "test", "update"]);
+
+      expect(mockSpawn.mock.calls[0][0]).toBe("ao");
+      expect(mockSpawn.mock.calls[0][1]).toEqual(["stop", "--yes"]);
+      expect(mockSpawn.mock.calls[1][0]).toBe("pnpm");
+      expect(mockSpawn.mock.calls[2][0]).toBe("ao");
+      expect(mockSpawn.mock.calls[2][1]).toEqual(["--version"]);
+      expect(mockSpawn.mock.calls.some((call) => call[0] === "ao" && call[1][0] === "start")).toBe(
+        false,
+      );
+    });
+
     it("honors --no-restore when restarting after update", async () => {
       mockSpawn.mockImplementation((cmd: string, args: string[]) => {
         if (cmd === "ao" && args[0] === "--version") {

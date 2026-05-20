@@ -276,7 +276,7 @@ async function pauseAoForUpdate(plan: UpdateLifecyclePlan): Promise<boolean> {
     process.exit(1);
   }
 
-  return true;
+  return plan.runningBeforeUpdate;
 }
 
 async function restartAoAfterUpdate(
