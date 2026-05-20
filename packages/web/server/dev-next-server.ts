@@ -2,7 +2,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
-import { ensureRemoteWsTokenSecret } from "./remote-auth.js";
+import { ensureRemoteAuthCredentials, ensureRemoteWsTokenSecret } from "./remote-auth.js";
 import { proxyTerminalUpgrade } from "./terminal-proxy.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -25,6 +25,7 @@ const pkgRoot = resolve(__dirname, "..");
 const port = Number.parseInt(process.env.PORT ?? "3000", 10);
 const hostname = process.env.HOST || "0.0.0.0";
 
+ensureRemoteAuthCredentials();
 ensureRemoteWsTokenSecret();
 process.env["AO_TRUST_REMOTE_ADDRESS_HEADER"] = "1";
 
@@ -50,6 +51,8 @@ async function main(): Promise<void> {
 }
 
 main().catch((err: unknown) => {
-  process.stderr.write(`[next-dev] failed to start: ${err instanceof Error ? err.message : String(err)}\n`);
+  process.stderr.write(
+    `[next-dev] failed to start: ${err instanceof Error ? err.message : String(err)}\n`,
+  );
   process.exit(1);
 });

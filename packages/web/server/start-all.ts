@@ -10,15 +10,12 @@ import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
 import {
-  createDefaultGlobalConfig,
-  getGlobalConfigPath,
   isWindows,
   killProcessTree,
-  loadGlobalConfig,
   markDaemonShutdownHandlerInstalled,
   spawnManagedDaemonChild,
 } from "@aoagents/ao-core";
-import { ensureRemoteWsTokenSecret } from "./remote-auth.js";
+import { ensureRemoteAuthCredentials, ensureRemoteWsTokenSecret } from "./remote-auth.js";
 import { proxyTerminalUpgrade } from "./terminal-proxy.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -45,18 +42,7 @@ markDaemonShutdownHandlerInstalled();
 let nextServer: Server | null = null;
 let shuttingDown = false;
 
-type RemoteAccessConfig = {
-  username?: string;
-  password?: string;
-};
-
-const globalConfig = loadGlobalConfig(getGlobalConfigPath()) ?? createDefaultGlobalConfig();
-const remoteAccessConfig: RemoteAccessConfig =
-  globalConfig.remoteAccess && typeof globalConfig.remoteAccess === "object"
-    ? globalConfig.remoteAccess
-    : {};
-process.env["AO_REMOTE_AUTH_USER"] ||= remoteAccessConfig.username?.trim() || "ao";
-process.env["AO_REMOTE_AUTH_PASSWORD"] ||= remoteAccessConfig.password?.trim() || "";
+ensureRemoteAuthCredentials();
 ensureRemoteWsTokenSecret();
 
 function log(label: string, msg: string): void {

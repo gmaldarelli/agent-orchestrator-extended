@@ -7,7 +7,7 @@
  * response, mirroring what the browser's MuxProvider does.
  */
 
-import { describe, it, expect, beforeAll, afterAll, afterEach, vi } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } from "vitest";
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { request, type IncomingMessage } from "node:http";
@@ -28,6 +28,8 @@ const describeWithTmux = TMUX ? describe : describe.skip;
 
 let terminal: DirectTerminalServer;
 let port: number;
+let defaultConfigDir: string;
+let defaultConfigPath: string;
 
 // =============================================================================
 // Helpers
@@ -93,6 +95,10 @@ function waitForMessage(
 // =============================================================================
 
 beforeAll(() => {
+  defaultConfigDir = mkdtempSync(resolve(tmpdir(), "ao-direct-terminal-default-"));
+  defaultConfigPath = resolve(defaultConfigDir, "config.yaml");
+  writeFileSync(defaultConfigPath, "{}\n");
+
   if (!TMUX) return; // skip setup on Windows — tests are wrapped in describeWithTmux
   execFileSync(TMUX, ["new-session", "-d", "-s", TEST_SESSION, "-x", "80", "-y", "24"], {
     timeout: 5000,
@@ -111,23 +117,29 @@ beforeAll(() => {
 });
 
 afterAll(() => {
-  if (!TMUX || !terminal) return; // skip teardown on Windows
-  terminal.shutdown();
-  try {
-    execFileSync(TMUX, ["kill-session", "-t", TEST_SESSION], { timeout: 5000 });
-  } catch {
-    /* */
+  rmSync(defaultConfigDir, { recursive: true, force: true });
+  if (TMUX && terminal) {
+    terminal.shutdown();
+    try {
+      execFileSync(TMUX, ["kill-session", "-t", TEST_SESSION], { timeout: 5000 });
+    } catch {
+      /* */
+    }
+    try {
+      execFileSync(TMUX, ["kill-session", "-t", TEST_HASH_SESSION], { timeout: 5000 });
+    } catch {
+      /* */
+    }
+    try {
+      execFileSync(TMUX, ["kill-session", "-t", TEST_SPACED_TARGET], { timeout: 5000 });
+    } catch {
+      /* */
+    }
   }
-  try {
-    execFileSync(TMUX, ["kill-session", "-t", TEST_HASH_SESSION], { timeout: 5000 });
-  } catch {
-    /* */
-  }
-  try {
-    execFileSync(TMUX, ["kill-session", "-t", TEST_SPACED_TARGET], { timeout: 5000 });
-  } catch {
-    /* */
-  }
+});
+
+beforeEach(() => {
+  vi.stubEnv("AO_GLOBAL_CONFIG", defaultConfigPath);
 });
 
 afterEach(() => {

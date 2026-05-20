@@ -3,6 +3,7 @@ import {
   createDefaultGlobalConfig,
   getGlobalConfigPath,
   loadGlobalConfig,
+  saveGlobalConfig,
 } from "@aoagents/ao-core";
 
 export type RemoteAuthCredentials = {
@@ -35,6 +36,38 @@ export function ensureRemoteWsTokenSecret(): string {
   const secret = randomBytes(32).toString("base64url");
   process.env.AO_REMOTE_WS_TOKEN_SECRET = secret;
   return secret;
+}
+
+export function ensureRemoteAuthCredentials(): RemoteAuthCredentials {
+  const configPath = getGlobalConfigPath();
+  const config = loadGlobalConfig(configPath) ?? createDefaultGlobalConfig();
+  const remoteAccess =
+    config.remoteAccess && typeof config.remoteAccess === "object"
+      ? (config.remoteAccess as { username?: string; password?: string })
+      : {};
+  const username = remoteAccess.username?.trim() || process.env.AO_REMOTE_AUTH_USER?.trim() || "ao";
+  const password =
+    remoteAccess.password?.trim() ||
+    process.env.AO_REMOTE_AUTH_PASSWORD?.trim() ||
+    randomBytes(18).toString("base64url");
+
+  if (remoteAccess.username?.trim() !== username || remoteAccess.password?.trim() !== password) {
+    saveGlobalConfig(
+      {
+        ...config,
+        remoteAccess: {
+          ...remoteAccess,
+          username,
+          password,
+        },
+      },
+      configPath,
+    );
+  }
+
+  process.env.AO_REMOTE_AUTH_USER = username;
+  process.env.AO_REMOTE_AUTH_PASSWORD = password;
+  return { username, password };
 }
 
 export function rotateRemoteWsTokenSecret(): string {
