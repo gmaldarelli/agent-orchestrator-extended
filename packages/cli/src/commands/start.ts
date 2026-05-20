@@ -176,7 +176,7 @@ async function ensureDefaultStartupNotifiers(
     dashboardUrl,
     desktopMode,
   });
-  return changed ? loadConfig(config.configPath) : config;
+  return changed ? loadConfig(targetConfigPath) : config;
 }
 
 function readProjectBehaviorConfig(projectPath: string): LocalProjectConfig {

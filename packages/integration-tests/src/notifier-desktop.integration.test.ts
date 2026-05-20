@@ -11,7 +11,9 @@ import { makeEvent } from "./helpers/event-factory.js";
 vi.mock("node:child_process", () => ({
   execFile: vi.fn(),
   execFileSync: vi.fn(() => {
-    throw new Error("not found");
+    const error = new Error("not found") as NodeJS.ErrnoException;
+    error.code = "ENOENT";
+    throw error;
   }),
 }));
 

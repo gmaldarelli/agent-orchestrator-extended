@@ -383,8 +383,8 @@ function detectTerminalNotifier(): boolean {
   try {
     execFileSync("terminal-notifier", ["--version"], { stdio: "ignore", windowsHide: true });
     return true;
-  } catch {
-    return false;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code !== "ENOENT";
   }
 }
 
