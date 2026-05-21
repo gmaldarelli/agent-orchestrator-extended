@@ -107,7 +107,7 @@ export function SessionDetailHeader({
     projects.find((project) => project.id === session.projectId)?.name ?? session.projectId;
   const showHeaderProjectLabel = headerProjectLabel.trim().toLowerCase() !== "agent orchestrator";
   const showProductBrand = !isOrchestrator;
-  const showProjectLabel = isOrchestrator || showHeaderProjectLabel;
+  const showProjectLabel = showHeaderProjectLabel;
   const showDesktopTitle = !isOrchestrator;
   const showDesktopHeaderSep = showProductBrand && showProjectLabel;
 

@@ -445,6 +445,35 @@ describe("SessionDetail desktop layout", () => {
     expect(banner.queryByRole("link", { name: "PR #777" })).not.toBeInTheDocument();
   });
 
+  it("does not repeat the product name for the Agent Orchestrator project header", () => {
+    render(
+      <SessionDetail
+        session={makeSession({
+          id: "ao-orchestrator",
+          projectId: "agent-orchestrator",
+          status: "working",
+          activity: "ready",
+          summary: "Project orchestrator",
+        })}
+        isOrchestrator
+        orchestratorZones={{ merge: 0, respond: 0, review: 0, pending: 0, working: 1, done: 2 }}
+        projectOrchestratorId="ao-orchestrator"
+        projects={[
+          { id: "agent-orchestrator", name: "Agent Orchestrator", path: "/tmp/agent-orchestrator" },
+        ]}
+      />,
+    );
+
+    const banner = within(screen.getByRole("banner"));
+
+    expect(banner.getByText("Orchestrator")).toBeInTheDocument();
+    expect(banner.queryByText("Agent Orchestrator")).not.toBeInTheDocument();
+    expect(banner.getByRole("link", { name: "Open Kanban" })).toHaveAttribute(
+      "href",
+      "/projects/agent-orchestrator",
+    );
+  });
+
   it("does not render Relaunch (clean) on worker sessions", () => {
     render(
       <SessionDetail
