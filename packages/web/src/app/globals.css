@@ -1372,6 +1372,23 @@ html.light .xterm .xterm-viewport:hover::-webkit-scrollbar-thumb:active {
   height: 6px;
   border-radius: 50%;
   flex-shrink: 0;
+  background: var(--color-text-muted);
+}
+.topbar-status-pill--active .topbar-status-pill__dot {
+  background: var(--color-status-working);
+}
+.topbar-status-pill--ready .topbar-status-pill__dot {
+  background: var(--color-status-ready);
+}
+.topbar-status-pill--idle .topbar-status-pill__dot {
+  background: var(--color-text-tertiary);
+}
+.topbar-status-pill--waiting-for-input .topbar-status-pill__dot {
+  background: var(--color-status-attention);
+}
+.topbar-status-pill--blocked .topbar-status-pill__dot,
+.topbar-status-pill--exited .topbar-status-pill__dot {
+  background: var(--color-status-error);
 }
 .topbar-status-pill__label {
   color: inherit;
@@ -8605,6 +8622,11 @@ html.light .xterm .xterm-viewport:hover::-webkit-scrollbar-thumb:active {
   min-width: 0;
 }
 
+.topbar-identity-sep {
+  color: var(--color-text-tertiary);
+  font-size: 12px;
+}
+
 /* topbar-mobile-only is the inverse of topbar-desktop-only; hidden on
    desktop, shown below the mobile breakpoint. */
 .topbar-mobile-only {
@@ -8673,6 +8695,14 @@ html.light .xterm .xterm-viewport:hover::-webkit-scrollbar-thumb:active {
     padding: 1px 5px;
     gap: 3px;
   }
+  .topbar-session-pills .topbar-fleet-pills {
+    gap: 3px;
+    padding-left: 6px;
+    margin-left: 3px;
+  }
+  .topbar-session-pills .topbar-fleet-pills__label {
+    font-size: 9px;
+  }
   /* Hide zone pill labels on mobile — count + color is enough */
   .topbar-session-pills .topbar-zone-pill__label {
     display: none;
@@ -8681,6 +8711,20 @@ html.light .xterm .xterm-viewport:hover::-webkit-scrollbar-thumb:active {
 
 /* Orchestrator agent-zone pills — compact topbar variant. Replaces the
    stacked status strip that used to sit above the terminal. */
+.topbar-fleet-pills {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 8px;
+  padding-left: 10px;
+  border-left: 1px solid var(--color-border-default);
+}
+.topbar-fleet-pills__label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
 .topbar-zone-pill {
   display: inline-flex;
   align-items: center;
