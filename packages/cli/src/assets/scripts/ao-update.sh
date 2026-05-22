@@ -186,13 +186,7 @@ if [ "$SMOKE_ONLY" = false ]; then
     run_cmd git pull --ff-only "$UPDATE_REMOTE" "$TARGET_BRANCH"
     run_cmd pnpm install
 
-    run_cmd pnpm --filter @aoagents/ao-core clean
-    run_cmd pnpm --filter @aoagents/ao-cli clean
-    run_cmd pnpm --filter @aoagents/ao-web clean
-
-    run_cmd pnpm --filter @aoagents/ao-core build
-    run_cmd pnpm --filter @aoagents/ao-cli build
-    run_cmd pnpm --filter @aoagents/ao-web build
+    run_cmd pnpm build
 
     printf '\nRefreshing ao launcher...\n'
     (
