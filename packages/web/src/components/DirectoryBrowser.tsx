@@ -5,6 +5,7 @@ import {
   ArrowUpIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
+  FolderIcon,
   getBreadcrumbs,
   joinBrowsePath,
   RefreshIcon,
@@ -199,7 +200,13 @@ export function DirectoryBrowser({ browser }: DirectoryBrowserProps) {
                     onDoubleClick={() => void browser.browse(nextPath)}
                     className={`add-project-browser__row${browser.selectedBrowsePath === nextPath ? " is-selected" : ""}`}
                   >
-                    {entry.name}
+                    <FolderIcon className="add-project-browser__row-icon" />
+                    <span className="add-project-browser__row-name">{entry.name}</span>
+                    {entry.isGitRepo ? (
+                      <span className="add-project-browser__badge" aria-hidden="true">
+                        git
+                      </span>
+                    ) : null}
                   </button>
                 );
               })}

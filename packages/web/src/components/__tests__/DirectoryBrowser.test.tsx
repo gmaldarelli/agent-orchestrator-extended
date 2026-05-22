@@ -38,6 +38,32 @@ describe("DirectoryBrowser", () => {
     await waitFor(() => expect(row.closest("button")?.className).toContain("is-selected"));
   });
 
+  it("shows a git badge only for git-repo folders", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          entries: [
+            { name: "repo", isDirectory: true, isGitRepo: true, hasLocalConfig: false },
+            { name: "plain", isDirectory: true, isGitRepo: false, hasLocalConfig: false },
+          ],
+          roots: [],
+        }),
+      }),
+    );
+
+    render(<Harness />);
+
+    const repoRow = await screen.findByRole("button", { name: "repo" });
+    const plainRow = await screen.findByRole("button", { name: "plain" });
+
+    expect(repoRow.querySelector(".add-project-browser__row-icon")).not.toBeNull();
+    expect(plainRow.querySelector(".add-project-browser__row-icon")).not.toBeNull();
+    expect(repoRow.querySelector(".add-project-browser__badge")).not.toBeNull();
+    expect(plainRow.querySelector(".add-project-browser__badge")).toBeNull();
+  });
+
   it("renders breadcrumb segments and navigates on crumb click", async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,

@@ -4850,6 +4850,35 @@ html.light .xterm .xterm-viewport:hover::-webkit-scrollbar-thumb:active {
   color: var(--color-text-secondary);
 }
 
+.add-project-browser__row-icon {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  margin-right: 8px;
+  color: var(--color-text-secondary);
+}
+
+.add-project-browser__row-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.add-project-browser__badge {
+  margin-left: auto;
+  flex: 0 0 auto;
+  border: 1px solid var(--color-border-default);
+  border-radius: 999px;
+  padding: 1px 6px;
+  background: var(--color-bg-elevated);
+  color: var(--color-text-secondary);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.4;
+  text-transform: uppercase;
+}
+
 .add-project-browser__state {
   padding: 20px;
   display: flex;
