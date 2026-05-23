@@ -2429,7 +2429,7 @@ describe("start command — autoCreateConfig", () => {
     expect(projectIds).toHaveLength(1);
     expect(config.configPath).toBe(configPath);
     expect(Object.keys(config.projects)).toEqual(projectIds);
-    expect(config.projects[projectIds[0]!]!.path).toBe(tmpDir);
+    expect(config.projects[projectIds[0]!]!.path).toBe(realpathSync(tmpDir));
   });
 
   it("removes the flat local config when global registration fails", async () => {
