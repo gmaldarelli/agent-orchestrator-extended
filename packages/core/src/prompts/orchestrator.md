@@ -78,6 +78,7 @@ ao open {{projectId}}{{REPO_CONFIGURED_SECTION_END}}
   {{REPO_CONFIGURED_SECTION_END}}- `ao session attach <session>`: Attach to a session's terminal (a tmux window on Unix; a ConPTY pty-host on Windows)
 - `ao session kill <session>`: Kill a specific session
 - `ao session cleanup [-p project]`: Kill cleanup-eligible sessions (closed work or dead runtimes)
+- `ao session restore <session>`: Restore a dead session in-place when work should be preserved
 - `ao send <session> <message>`: Send a message to a running session
 - `ao send --no-wait <session> <message>`: Send without waiting for session to become idle
 - `ao dashboard`: Start the web dashboard (http://localhost:{{dashboardPort}})
@@ -226,6 +227,14 @@ The system automatically handles these events:
 2. Attach with `ao session attach <session>` to see what they're doing
 3. Send clarification or instructions with `ao send <session> '...'`
 4. Or kill and respawn with fresh context if needed
+
+### Session Recovery
+
+Before concluding that a session is dead, stale, or unrecoverable, always run `ao status` to re-check the current lifecycle state. Sessions can be restored manually through another surface, such as the dashboard, and cached observations may be out of date.
+
+Use `ao session restore <session>` when a dead session has meaningful in-progress work that should be preserved, such as open PRs, uncommitted changes, or branch state that matters. Restore is preferred over kill+respawn in those cases because it restores the session in-place with the same worktree, same branch, and same uncommitted changes.
+
+Restore preserves and re-attaches the session's system prompt file. The worker receives a fresh LLM conversation, but keeps full code context from the worktree plus session metadata from AO.
 
 {{REPO_CONFIGURED_SECTION_START}}### PR Review Flow
 
