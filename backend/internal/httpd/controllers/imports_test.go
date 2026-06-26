@@ -88,10 +88,12 @@ func TestImportAPI_RunError(t *testing.T) {
 	}
 }
 
-// TestImportAPI_NilSvcReturns501 verifies the controller falls through to the
-// 501 stub when no import service is wired. This test only passes after
-// Task 4 regenerates openapi.yaml to include /api/v1/import; until then the
-// apispec.NotImplemented call panics on the missing operation.
-// Kept as a reminder; re-enable after api:spec regen.
-//
-// func TestImportAPI_NilSvcReturns501(t *testing.T) { ... }
+func TestImportAPI_NilSvcReturns501(t *testing.T) {
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	srv := httptest.NewServer(httpd.NewRouterWithControl(config.Config{}, log, nil, httpd.APIDeps{}, httpd.ControlDeps{}))
+	t.Cleanup(srv.Close)
+	body, status, _ := doRequest(t, srv, "GET", "/api/v1/import", "")
+	assertErrorCode(t, body, status, http.StatusNotImplemented, "NOT_IMPLEMENTED")
+	body, status, _ = doRequest(t, srv, "POST", "/api/v1/import", "")
+	assertErrorCode(t, body, status, http.StatusNotImplemented, "NOT_IMPLEMENTED")
+}
