@@ -2,13 +2,6 @@
 
 import { useEffect, useState } from "react";
 
-const navItems = [
-	{ label: "Features", href: "#features" },
-	{ label: "How it works", href: "#how" },
-	{ label: "Architecture", href: "#architecture" },
-	{ label: "Quickstart", href: "#quickstart" },
-];
-
 function GithubIcon({ className = "" }: { className?: string }) {
 	return (
 		<svg className={className} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
@@ -26,6 +19,16 @@ function ArrowUpRightIcon({ className = "" }: { className?: string }) {
 	);
 }
 
+function DownloadIcon({ className = "" }: { className?: string }) {
+	return (
+		<svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+			<path d="M12 3v12" />
+			<path d="m7 10 5 5 5-5" />
+			<path d="M5 21h14" />
+		</svg>
+	);
+}
+
 function MenuIcon({ className = "" }: { className?: string }) {
 	return (
 		<svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
@@ -36,7 +39,7 @@ function MenuIcon({ className = "" }: { className?: string }) {
 	);
 }
 
-function XIcon({ className = "" }: { className?: string }) {
+function CloseIcon({ className = "" }: { className?: string }) {
 	return (
 		<svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
 			<path d="M18 6 6 18" />
@@ -45,123 +48,167 @@ function XIcon({ className = "" }: { className?: string }) {
 	);
 }
 
-function SunIcon({ className = "" }: { className?: string }) {
+function XSocialIcon({ className = "" }: { className?: string }) {
 	return (
-		<svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-			<circle cx="12" cy="12" r="4" />
-			<path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41" />
+		<svg className={className} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+			<path d="M18.9 2.25h3.24l-7.08 8.09 8.33 11.41h-6.52l-5.11-6.91-5.84 6.91H2.66l7.57-8.67L2.25 2.25h6.69l4.62 6.3 5.34-6.3Zm-1.14 17.5h1.8L7.96 4.14H6.03l11.73 15.61Z" />
 		</svg>
 	);
 }
 
-function MoonIcon({ className = "" }: { className?: string }) {
-	return (
-		<svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-			<path d="M20.99 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 20.99 12.79Z" />
-		</svg>
-	);
+const socials = [
+	{
+		label: "GitHub",
+		href: "https://github.com/AgentWrapper/agent-orchestrator",
+		icon: GithubIcon,
+	},
+	{
+		label: "X",
+		href: "https://twitter.com/aoagents",
+		icon: XSocialIcon,
+	},
+];
+
+const navLinks = [
+	{ label: "Demo", href: "#see-it" },
+	{ label: "Agents", href: "#agents" },
+	{ label: "Docs", href: "/docs" },
+];
+
+function getPlatformLabel() {
+	if (typeof navigator === "undefined") return "Install AO";
+
+	const platform = `${navigator.platform} ${navigator.userAgent}`.toLowerCase();
+	if (platform.includes("mac")) return "Install for macOS";
+	if (platform.includes("win")) return "Install for Windows";
+	if (platform.includes("linux") || platform.includes("x11")) return "Install for Linux";
+	return "Install AO";
 }
 
 export function LandingNav() {
 	const [open, setOpen] = useState(false);
-	const [theme, setTheme] = useState("dark");
-	const [mounted, setMounted] = useState(false);
-	const isLight = theme === "light";
+	const [installLabel, setInstallLabel] = useState("Install AO");
 
 	useEffect(() => {
-		const current = document.documentElement.dataset.theme;
-		setTheme(current === "light" ? "light" : "dark");
-		setMounted(true);
+		setInstallLabel(getPlatformLabel());
 	}, []);
 
 	useEffect(() => {
-		if (!mounted) return;
-		document.documentElement.dataset.theme = theme;
-		document.documentElement.classList.toggle("dark", theme === "dark");
-		document.documentElement.style.colorScheme = theme;
-		window.localStorage.setItem("ao-theme", theme);
-	}, [mounted, theme]);
+		document.documentElement.dataset.theme = "dark";
+		document.documentElement.classList.add("dark");
+		document.documentElement.style.colorScheme = "dark";
+	}, []);
 
 	return (
 		<header
 			data-testid="site-nav"
-			className="sticky top-0 z-40 border-b border-[color:var(--border)] bg-[color:var(--nav-bg)] backdrop-blur-xl"
+			className="pointer-events-none fixed inset-x-0 top-4 z-40 flex justify-center px-4"
 		>
-			<div className="container-page flex h-16 items-center justify-between">
-				<a href="#top" data-testid="nav-logo" className="group inline-flex h-10 items-center gap-2.5">
-					<img src="/ao-logo.svg" alt="Agent Orchestrator" className="block h-10 w-10 shrink-0 object-contain" />
-					<span className="font-display text-[15px] font-bold leading-none tracking-tight text-[color:var(--fg)]">
+			<div
+				className="pointer-events-auto grid h-14 w-full max-w-[1040px] grid-cols-[1fr_auto] items-center gap-4 rounded-2xl bg-black/[0.58] px-4 shadow-[0_20px_70px_-52px_rgba(0,0,0,1),inset_0_1px_0_rgba(255,255,255,0.08),inset_0_0_0_1px_rgba(255,255,255,0.055)] backdrop-blur-2xl sm:px-5 md:grid-cols-[1fr_auto_1fr]"
+			>
+				<a
+					href="#top"
+					data-testid="nav-logo"
+					className="group inline-flex h-10 shrink-0 items-center gap-3 justify-self-start"
+				>
+					<img src="/ao-logo.svg" alt="Agent Orchestrator" className="block h-9 w-9 shrink-0 -translate-y-1 object-contain" />
+					<span className="font-display text-[15px] font-bold leading-[1.1] tracking-tight text-[color:var(--fg)]">
 						Agent Orchestrator
 					</span>
 				</a>
 
-				<nav className="hidden items-center gap-7 md:flex">
-					{navItems.map((item) => (
+				<nav className="hidden items-center justify-center gap-1 rounded-xl bg-white/[0.035] p-1 justify-self-center md:flex" aria-label="Primary">
+					{navLinks.map((item) => (
 						<a
 							key={item.label}
 							href={item.href}
-							className="text-[13px] font-medium text-[color:var(--fg-muted)] transition-colors hover:text-[color:var(--fg)]"
+							className="rounded-lg px-4 py-2 text-[14px] font-semibold text-[color:var(--fg-muted)] transition-[background-color,color,transform] duration-160 ease-out hover:bg-white/[0.08] hover:text-[color:var(--fg)] active:scale-95"
 						>
 							{item.label}
 						</a>
 					))}
 				</nav>
 
-				<div className="flex items-center gap-2">
+				<div className="hidden items-center justify-end gap-2 justify-self-end md:flex">
+					{socials.map((item) => {
+						const Icon = item.icon;
+						return (
+							<a
+								key={item.label}
+								href={item.href}
+								target="_blank"
+								rel="noreferrer"
+								aria-label={item.label}
+								title={item.label}
+								className="inline-flex h-10 w-10 items-center justify-center rounded-md bg-white/[0.035] text-[color:var(--fg-muted)] transition-[background-color,color,transform,filter] duration-160 ease-out hover:scale-105 hover:bg-white/[0.075] hover:text-[color:var(--fg)] active:scale-95"
+							>
+								<Icon className="h-5 w-5" />
+							</a>
+						);
+					})}
 					<a
-						href="https://github.com/AgentWrapper/agent-orchestrator"
-						target="_blank"
-						rel="noreferrer"
-						data-testid="nav-star-btn"
-						className="hidden items-center gap-1.5 rounded-md border border-[color:var(--border-strong)] px-2.5 py-1.5 text-[12px] font-medium text-[color:var(--fg-muted)] transition-colors hover:border-[color:var(--border-bright)] hover:text-[color:var(--fg)] sm:inline-flex"
-					>
-						<GithubIcon className="h-3.5 w-3.5" />
-						<span className="font-mono">7.7k</span>
-					</a>
-					<button
-						type="button"
-						onClick={() => setTheme(isLight ? "dark" : "light")}
-						data-testid="theme-toggle"
-						className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-[color:var(--border-strong)] text-[color:var(--fg-muted)] transition-colors hover:border-[color:var(--border-bright)] hover:text-[color:var(--fg)]"
-						aria-label={isLight ? "Switch to dark theme" : "Switch to light theme"}
-						title={isLight ? "Dark theme" : "Light theme"}
-					>
-						{isLight ? <MoonIcon className="h-4 w-4" /> : <SunIcon className="h-4 w-4" />}
-					</button>
-					<a
-						href="https://github.com/AgentWrapper/agent-orchestrator"
-						target="_blank"
-						rel="noreferrer"
+						href="/docs/installation"
 						data-testid="nav-cta-btn"
-						className="inline-flex items-center gap-1.5 rounded-md bg-[color:var(--accent)] px-3.5 py-1.5 text-[13px] font-semibold text-white transition-all hover:brightness-110"
-						style={{ color: "#fff" }}
+						className="group ml-1 inline-flex h-9 items-center gap-2 rounded-md bg-[color:var(--accent)] px-4 text-[13px] font-semibold shadow-[0_0_0_1px_rgba(255,255,255,0.08)_inset] transition-all hover:brightness-110"
+						style={{ color: "#081225" }}
 					>
+						<DownloadIcon className="h-4 w-4" />
+						<span>{installLabel}</span>
+						<ArrowUpRightIcon className="h-3.5 w-3.5 opacity-80 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
+					</a>
+				</div>
+
+				<div
+					className="flex items-center gap-2 md:hidden"
+				>
+					<a
+						href="/docs/installation"
+						data-testid="nav-mobile-cta-btn"
+						className="inline-flex h-9 items-center gap-1.5 rounded-md bg-[color:var(--accent)] px-3 text-[12px] font-semibold"
+						style={{ color: "#081225" }}
+					>
+						<DownloadIcon className="h-3.5 w-3.5" />
 						Install
-						<ArrowUpRightIcon className="h-3.5 w-3.5" />
 					</a>
 					<button
 						onClick={() => setOpen(!open)}
-						className="rounded-md border border-[color:var(--border-strong)] p-1.5 text-[color:var(--fg)] md:hidden"
+						className="rounded-md border border-[color:var(--border-strong)] p-2 text-[color:var(--fg)]"
 						data-testid="nav-mobile-toggle"
 						aria-label="menu"
 					>
-						{open ? <XIcon className="h-4 w-4" /> : <MenuIcon className="h-4 w-4" />}
+						{open ? <CloseIcon className="h-4 w-4" /> : <MenuIcon className="h-4 w-4" />}
 					</button>
 				</div>
 			</div>
 			{open && (
-				<div className="border-t border-[color:var(--border)] bg-[color:var(--bg-card)] md:hidden">
-					<div className="flex flex-col gap-3.5 px-5 py-4">
-						{navItems.map((item) => (
-							<a
-								key={item.label}
-								href={item.href}
-								onClick={() => setOpen(false)}
-								className="text-sm font-medium text-[color:var(--fg-muted)]"
-							>
-								{item.label}
-							</a>
-						))}
+				<div className="pointer-events-auto mt-2 w-[calc(100%-2rem)] max-w-[980px] rounded-2xl bg-black/[0.72] p-3 shadow-[0_20px_70px_-52px_rgba(0,0,0,1),inset_0_1px_0_rgba(255,255,255,0.08),inset_0_0_0_1px_rgba(255,255,255,0.055)] backdrop-blur-2xl md:hidden">
+					<div className="flex flex-col gap-3">
+						{socials.map((item) => {
+							const Icon = item.icon;
+							return (
+								<a
+									key={item.label}
+									href={item.href}
+									target="_blank"
+									rel="noreferrer"
+									onClick={() => setOpen(false)}
+									className="inline-flex items-center gap-2 rounded-md border border-[color:var(--border)] px-3 py-2 text-sm font-medium text-[color:var(--fg-muted)]"
+								>
+									<Icon className="h-4 w-4" />
+									{item.label}
+								</a>
+							);
+						})}
+						<a
+							href="/docs/installation"
+							onClick={() => setOpen(false)}
+							className="inline-flex items-center justify-center gap-2 rounded-md bg-[color:var(--accent)] px-3 py-2.5 text-sm font-semibold"
+							style={{ color: "#081225" }}
+						>
+							<DownloadIcon className="h-4 w-4" />
+							{installLabel}
+						</a>
 					</div>
 				</div>
 			)}

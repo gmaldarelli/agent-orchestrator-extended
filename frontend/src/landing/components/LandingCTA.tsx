@@ -60,8 +60,8 @@ export function LandingCTA() {
 							target="_blank"
 							rel="noreferrer"
 							data-testid="cta-github-btn"
-							className="group inline-flex items-center gap-2 rounded-lg bg-[color:var(--accent)] px-6 py-3.5 text-[15px] font-semibold text-white shadow-[0_0_0_1px_rgba(255,255,255,0.1)_inset,0_8px_24px_-8px_rgba(77,141,255,0.6)] transition-all hover:brightness-110"
-							style={{ color: "#fff" }}
+							className="group inline-flex items-center gap-2 rounded-lg bg-[color:var(--accent)] px-6 py-3.5 text-[15px] font-semibold shadow-[0_0_0_1px_rgba(255,255,255,0.1)_inset,0_8px_24px_-8px_rgba(130,170,255,0.42)] transition-all hover:brightness-110"
+							style={{ color: "#081225" }}
 						>
 							<GithubIcon className="h-4 w-4" />
 							Star on GitHub · 7.7k

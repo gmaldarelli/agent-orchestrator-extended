@@ -6,14 +6,11 @@ export function LandingVideo() {
 			className="relative border-t border-[color:var(--border)] py-24 sm:py-32"
 		>
 			<div className="container-page">
-				<div className="mb-10 text-center">
-					<div className="serial-num mb-3 font-mono text-xs opacity-70">see it in action</div>
+				<div className="mx-auto mb-10 max-w-[1180px] text-left">
 					<h2
-						className="inline-block font-display font-bold leading-[1.02] tracking-tight text-[color:var(--fg)]"
-						style={{ fontSize: "clamp(28px, 3.6vw, 44px)" }}
+						className="inline-block font-mono text-[13px] font-bold uppercase leading-none tracking-[0.18em] text-[color:var(--fg-muted)]"
 					>
-						Watch the founder walk through it -{" "}
-						<span className="font-editorial font-medium italic text-[color:var(--accent)]">100 PRs in 6 days.</span>
+						See it in action
 					</h2>
 				</div>
 
