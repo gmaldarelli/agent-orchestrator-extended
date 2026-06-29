@@ -18,7 +18,6 @@ import (
 	"github.com/aoagents/agent-orchestrator/backend/internal/ports"
 	aoprocess "github.com/aoagents/agent-orchestrator/backend/internal/process"
 	"github.com/aoagents/agent-orchestrator/backend/internal/sessionguard"
-	"github.com/aoagents/agent-orchestrator/backend/internal/sessionprompt"
 	"github.com/aoagents/agent-orchestrator/backend/internal/skillassets"
 )
 
@@ -1731,32 +1730,32 @@ func defaultSpawnBranch(id domain.SessionID, kind domain.SessionKind, prefix str
 }
 
 func buildPrompt(cfg ports.SpawnConfig) string {
-	return sessionprompt.BuildTaskPrompt(sessionprompt.TaskConfig{
-		Role:         promptRole(cfg.Kind),
+	return buildTaskPrompt(taskPromptConfig{
+		Role:         promptRoleForKind(cfg.Kind),
 		Prompt:       cfg.Prompt,
 		IssueID:      string(cfg.IssueID),
 		IssueContext: cfg.IssueContext,
 	})
 }
 
-func promptRole(kind domain.SessionKind) sessionprompt.Role {
+func promptRoleForKind(kind domain.SessionKind) sessionPromptRole {
 	switch kind {
 	case domain.KindOrchestrator:
-		return sessionprompt.RoleOrchestrator
+		return sessionPromptRoleOrchestrator
 	case domain.KindWorker:
-		return sessionprompt.RoleWorker
+		return sessionPromptRoleWorker
 	default:
 		return ""
 	}
 }
 
-func promptProjectContext(projectID domain.ProjectID, project domain.ProjectRecord) sessionprompt.ProjectContext {
+func promptProjectContext(projectID domain.ProjectID, project domain.ProjectRecord) promptProject {
 	cfg := project.Config.WithDefaults()
 	id := project.ID
 	if strings.TrimSpace(id) == "" {
 		id = string(projectID)
 	}
-	return sessionprompt.ProjectContext{
+	return promptProject{
 		ID:            id,
 		Name:          project.DisplayName,
 		Repo:          project.RepoOriginURL,
@@ -1789,8 +1788,8 @@ func (m *Manager) buildSystemPrompt(ctx context.Context, kind domain.SessionKind
 	if err != nil {
 		return "", err
 	}
-	role := promptRole(kind)
-	cfg := sessionprompt.SystemConfig{
+	role := promptRoleForKind(kind)
+	cfg := systemPromptConfig{
 		Role:    role,
 		Project: promptProjectContext(projectID, project),
 	}
@@ -1806,7 +1805,7 @@ func (m *Manager) buildSystemPrompt(ctx context.Context, kind domain.SessionKind
 		if ok {
 			cfg.OrchestratorSessionID = string(orchestratorID)
 		}
-		rules, err := sessionprompt.BuildProjectRules(sessionprompt.RulesConfig{
+		rules, err := buildProjectRules(projectRulesConfig{
 			ProjectPath:    project.Path,
 			AgentRules:     project.Config.AgentRules,
 			AgentRulesFile: project.Config.AgentRulesFile,
@@ -1828,7 +1827,7 @@ func (m *Manager) buildSystemPrompt(ctx context.Context, kind domain.SessionKind
 		}
 	}
 	cfg.AdditionalSections = append(cfg.AdditionalSections, usingAOSkillPrompt(m.dataDir))
-	return sessionprompt.BuildSystemPrompt(cfg), nil
+	return buildSystemPromptText(cfg), nil
 }
 
 func (m *Manager) activeOrchestratorSessionID(ctx context.Context, project domain.ProjectID) (domain.SessionID, bool, error) {
