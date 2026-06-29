@@ -18,6 +18,7 @@ func TestBuildTaskPrompt_IssueContextStaysInTaskPrompt(t *testing.T) {
 		"## Issue Context",
 		"Title: Enrich prompts",
 		"implement the smallest appropriate fix",
+		"Fetch comments or linked issues only if you need additional context",
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("task prompt missing %q:\n%s", want, got)
