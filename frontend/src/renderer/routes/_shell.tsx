@@ -2,6 +2,7 @@ import { createFileRoute, Outlet, useNavigate } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { type CSSProperties, useCallback, useEffect } from "react";
 import { ShellTopbar } from "../components/ShellTopbar";
+import type { ImportProjectInput } from "../components/ImportProjectDialog";
 import { Sidebar } from "../components/Sidebar";
 import { SidebarProvider } from "../components/ui/sidebar";
 import { TitlebarNav } from "../components/TitlebarNav";
@@ -54,7 +55,7 @@ function ShellLayout() {
 	);
 
 	const createProject = useCallback(
-		async (input: { path: string; workerAgent: string; orchestratorAgent: string }) => {
+		async (input: ImportProjectInput) => {
 			void addRendererExceptionStep("Project add requested", {
 				source: "project-add",
 				operation: "project_add",
@@ -64,10 +65,14 @@ function ShellLayout() {
 			const { data, error } = await apiClient.POST("/api/v1/projects", {
 				body: {
 					path: input.path,
-					config: {
-						worker: { agent: input.workerAgent },
-						orchestrator: { agent: input.orchestratorAgent },
-					},
+					asWorkspace: input.asWorkspace,
+					config:
+						input.workerAgent && input.orchestratorAgent
+							? {
+									worker: { agent: input.workerAgent },
+									orchestrator: { agent: input.orchestratorAgent },
+								}
+							: undefined,
 				},
 			});
 			if (error) {
@@ -90,6 +95,11 @@ function ShellLayout() {
 			};
 			void captureRendererEvent("ao.renderer.project_add_succeeded", { project_id: workspace.id });
 			updateWorkspaces((current) => [workspace, ...current.filter((item) => item.id !== workspace.id)]);
+			if (input.asWorkspace) {
+				await queryClient.invalidateQueries({ queryKey: workspaceQueryKey });
+				void navigate({ to: "/projects/$projectId", params: { projectId: workspace.id } });
+				return;
+			}
 			try {
 				const sessionId = await spawnOrchestrator(workspace.id);
 				await queryClient.invalidateQueries({ queryKey: workspaceQueryKey });

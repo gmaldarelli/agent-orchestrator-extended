@@ -25,12 +25,13 @@ import {
 	type UpdateSettings,
 	type UpdateStatus,
 } from "./main/update-settings";
-import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { execFile, spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { existsSync } from "node:fs";
-import { readFile, rm } from "node:fs/promises";
+import { readdir, readFile, rm, stat } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
+import { promisify } from "node:util";
 import { type DaemonLaunchSpec, resolveDaemonLaunch } from "./shared/daemon-launch";
 import { createListenPortScanner, defaultRunFilePath, parseRunFile } from "./shared/daemon-discovery";
 import type { DaemonStatus } from "./shared/daemon-status";
@@ -49,6 +50,7 @@ import { createBrowserViewHost, type BrowserViewHost } from "./main/browser-view
 import { connectSupervisor, type SupervisorLinkHandle } from "./main/supervisor-link";
 import { shouldLinkOnAttach } from "./main/daemon-owner";
 import { readMigrationState, updateMigration, writeAppStateMarker, type MigrationState } from "./main/app-state";
+import type { WorkspaceRepoScanItem } from "./preload";
 
 // Globals injected at compile time by @electron-forge/plugin-vite.
 declare const MAIN_WINDOW_VITE_DEV_SERVER_URL: string | undefined;
@@ -86,6 +88,8 @@ let daemonStatus: DaemonStatus = { state: "stopped" };
 let browserViewHost: BrowserViewHost | null = null;
 // Held for the app lifetime. Dropping it (on any exit) triggers daemon self-stop.
 let supervisorLink: SupervisorLinkHandle | null = null;
+
+const execFileAsync = promisify(execFile);
 
 const isDev = !app.isPackaged;
 
@@ -261,6 +265,54 @@ function telemetryOverrides(): Record<string, string> {
 		AO_TELEMETRY_POSTHOG_KEY: process.env.AO_TELEMETRY_POSTHOG_KEY ?? DEFAULT_POSTHOG_PROJECT_KEY,
 		AO_TELEMETRY_POSTHOG_HOST: process.env.AO_TELEMETRY_POSTHOG_HOST ?? DEFAULT_POSTHOG_HOST,
 	};
+}
+
+async function gitOutput(cwd: string, args: string[]): Promise<string | null> {
+	try {
+		const { stdout } = await execFileAsync("git", ["-C", cwd, ...args], { timeout: 5000 });
+		return String(stdout).trim();
+	} catch {
+		return null;
+	}
+}
+
+async function isStandaloneGitRepo(repoPath: string): Promise<boolean> {
+	try {
+		const gitStat = await stat(path.join(repoPath, ".git"));
+		if (!gitStat.isDirectory()) return false;
+	} catch {
+		return false;
+	}
+	const topLevel = await gitOutput(repoPath, ["rev-parse", "--show-toplevel"]);
+	return topLevel !== null && path.resolve(topLevel) === path.resolve(repoPath);
+}
+
+async function scanWorkspaceRepos(parent: string): Promise<WorkspaceRepoScanItem[]> {
+	const entries = await readdir(parent, { withFileTypes: true });
+	const repos = await Promise.all(
+		entries
+			.filter((entry) => entry.isDirectory() && entry.name !== ".git")
+			.map(async (entry): Promise<WorkspaceRepoScanItem | null> => {
+				const repoPath = path.join(parent, entry.name);
+				if (!(await isStandaloneGitRepo(repoPath))) return null;
+
+				const [branch, remote] = await Promise.all([
+					gitOutput(repoPath, ["symbolic-ref", "--quiet", "--short", "HEAD"]),
+					gitOutput(repoPath, ["remote", "get-url", "origin"]),
+				]);
+				return {
+					name: entry.name,
+					path: repoPath,
+					branch,
+					remote,
+					valid: remote !== null && remote !== "",
+					error: remote ? undefined : "No remote configured",
+				};
+			}),
+	);
+	return repos
+		.filter((repo): repo is WorkspaceRepoScanItem => repo !== null)
+		.sort((a, b) => a.name.localeCompare(b.name));
 }
 
 // Run the user's login shell to dump its env. stdin is ignored so an rc that
@@ -793,12 +845,15 @@ ipcMain.handle("telemetry:getBootstrap", () =>
 ipcMain.handle("app:chooseDirectory", async () => {
 	const options: OpenDialogOptions = {
 		properties: ["openDirectory"],
-		title: "Choose a git repository",
+		title: "Choose a folder",
 	};
 	const result = mainWindow ? await dialog.showOpenDialog(mainWindow, options) : await dialog.showOpenDialog(options);
 
 	if (result.canceled) return null;
 	return result.filePaths[0] ?? null;
+});
+ipcMain.handle("app:scanWorkspaceRepos", async (_event, selectedPath: string): Promise<WorkspaceRepoScanItem[]> => {
+	return scanWorkspaceRepos(selectedPath);
 });
 ipcMain.handle("clipboard:writeText", (_event, text: string) => {
 	clipboard.writeText(text, "clipboard");

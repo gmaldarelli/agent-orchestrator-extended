@@ -16,10 +16,21 @@ export type BrowserNavigateInput = {
 	url: string;
 };
 
+export type WorkspaceRepoScanItem = {
+	name: string;
+	path: string;
+	branch: string | null;
+	remote: string | null;
+	valid: boolean;
+	error?: string;
+};
+
 const api = {
 	app: {
 		getVersion: () => ipcRenderer.invoke("app:getVersion") as Promise<string>,
 		chooseDirectory: () => ipcRenderer.invoke("app:chooseDirectory") as Promise<string | null>,
+		scanWorkspaceRepos: (path: string) =>
+			ipcRenderer.invoke("app:scanWorkspaceRepos", path) as Promise<WorkspaceRepoScanItem[]>,
 	},
 	clipboard: {
 		writeText: (text: string) => ipcRenderer.invoke("clipboard:writeText", text) as Promise<void>,

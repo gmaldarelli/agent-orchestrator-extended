@@ -29,14 +29,19 @@ const workspace: WorkspaceSummary = {
 	sessions: [],
 };
 
-type CreateProjectHandler = (input: { path: string; workerAgent: string; orchestratorAgent: string }) => Promise<void>;
+type ImportProjectHandler = (input: {
+	path: string;
+	workerAgent?: string;
+	orchestratorAgent?: string;
+	asWorkspace?: boolean;
+}) => Promise<void>;
 type RemoveProjectHandler = (projectId: string) => Promise<void>;
 
 function renderSidebar({
-	onCreateProject = vi.fn().mockResolvedValue(undefined) as CreateProjectHandler,
+	onCreateProject = vi.fn().mockResolvedValue(undefined) as ImportProjectHandler,
 	onRemoveProject = vi.fn().mockResolvedValue(undefined) as RemoveProjectHandler,
 }: {
-	onCreateProject?: CreateProjectHandler;
+	onCreateProject?: ImportProjectHandler;
 	onRemoveProject?: RemoveProjectHandler;
 } = {}) {
 	const queryClient = new QueryClient({
@@ -117,13 +122,16 @@ describe("Sidebar", () => {
 
 	it("requires explicit worker and orchestrator agents when creating a project", async () => {
 		const user = userEvent.setup();
-		const onCreateProject = vi.fn().mockResolvedValue(undefined) as CreateProjectHandler;
+		const onCreateProject = vi.fn().mockResolvedValue(undefined) as ImportProjectHandler;
 		window.ao!.app.chooseDirectory = vi.fn().mockResolvedValue("/repo/new-project");
 		renderSidebar({ onCreateProject });
 
 		await user.click(screen.getByLabelText("New project"));
+		await user.click(await screen.findByRole("button", { name: /Project A single Git repository/i }));
+		await user.click(screen.getByRole("button", { name: /Choose a project folder/i }));
+		await user.click(await screen.findByRole("button", { name: "Import project" }));
 
-		expect(await screen.findByText("/repo/new-project")).toBeInTheDocument();
+		expect((await screen.findAllByText("/repo/new-project")).length).toBeGreaterThan(0);
 		const dialog = screen.getByRole("dialog", { name: "Project agents" });
 		expect(dialog).toHaveClass("left-1/2", "top-1/2", "-translate-x-1/2", "-translate-y-1/2");
 		await chooseOption(screen.getByRole("combobox", { name: "Worker agent" }), "codex");
@@ -137,6 +145,58 @@ describe("Sidebar", () => {
 				orchestratorAgent: "claude-code",
 			}),
 		);
+	});
+
+	it("imports a valid workspace without opening the agent sheet", async () => {
+		const user = userEvent.setup();
+		const onCreateProject = vi.fn().mockResolvedValue(undefined) as ImportProjectHandler;
+		window.ao!.app.chooseDirectory = vi.fn().mockResolvedValue("/repo/workspace");
+		window.ao!.app.scanWorkspaceRepos = vi.fn().mockResolvedValue([
+			{
+				name: "web",
+				path: "/repo/workspace/web",
+				branch: "main",
+				remote: "https://github.com/org/web.git",
+				valid: true,
+			},
+		]);
+		renderSidebar({ onCreateProject });
+
+		await user.click(screen.getByLabelText("New project"));
+		await user.click(await screen.findByRole("button", { name: /Workspace Several Git repos/i }));
+		await user.click(screen.getByRole("button", { name: /Choose a folder/i }));
+
+		expect(await screen.findByText("web")).toBeInTheDocument();
+		await user.click(screen.getByRole("button", { name: "Import workspace" }));
+
+		await waitFor(() => expect(onCreateProject).toHaveBeenCalledWith({ path: "/repo/workspace", asWorkspace: true }));
+		expect(screen.queryByRole("dialog", { name: "Project agents" })).not.toBeInTheDocument();
+	});
+
+	it("blocks workspace import when a discovered repository has no remote", async () => {
+		const user = userEvent.setup();
+		const onCreateProject = vi.fn().mockResolvedValue(undefined) as ImportProjectHandler;
+		window.ao!.app.chooseDirectory = vi.fn().mockResolvedValue("/repo/workspace");
+		window.ao!.app.scanWorkspaceRepos = vi.fn().mockResolvedValue([
+			{
+				name: "web",
+				path: "/repo/workspace/web",
+				branch: "main",
+				remote: null,
+				valid: false,
+				error: "No remote configured",
+			},
+		]);
+		renderSidebar({ onCreateProject });
+
+		await user.click(screen.getByLabelText("New project"));
+		await user.click(await screen.findByRole("button", { name: /Workspace Several Git repos/i }));
+		await user.click(screen.getByRole("button", { name: /Choose a folder/i }));
+
+		expect(await screen.findByText("VALIDATION FAILED · WORKSPACE NOT REGISTERED")).toBeInTheDocument();
+		expect(screen.getByText("Resolve 1 failed repository to continue")).toBeInTheDocument();
+		expect(screen.getByRole("button", { name: "Import workspace" })).toBeDisabled();
+		expect(onCreateProject).not.toHaveBeenCalled();
 	});
 
 	it("opens global settings from the footer menu when no project is selected", async () => {
