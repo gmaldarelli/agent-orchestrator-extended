@@ -18,9 +18,7 @@ export function LandingVideo() {
 			<div className="container-page">
 				<div className="landing-section-header mx-auto max-w-[1180px] text-left">
 					<div className="landing-eyebrow mb-4">Demo</div>
-					<h2 className="landing-heading">
-						See it in action
-					</h2>
+					<h2 className="landing-heading">See it in action</h2>
 				</div>
 
 				<div className="relative mx-auto w-full max-w-[1180px]">

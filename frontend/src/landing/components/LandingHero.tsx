@@ -556,10 +556,7 @@ export function LandingHero() {
 			/>
 			<div className="relative z-10 mx-auto w-full max-w-[1200px] px-5 sm:px-8 lg:px-12 xl:px-16">
 				<div className="mx-auto text-center">
-					<h1
-						data-testid="hero-headline"
-						className="landing-hero-heading mx-auto font-sans"
-					>
+					<h1 data-testid="hero-headline" className="landing-hero-heading mx-auto font-sans">
 						<span className="block">Stop babysitting coding agents.</span>
 						<span className="mt-2 block italic">
 							Start merging <span className="font-[620] text-[#93b4f8]">real work.</span>

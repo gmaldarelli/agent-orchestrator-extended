@@ -198,10 +198,7 @@ export function LandingSocialProof() {
 						<div className="lg:col-span-7">
 							<div className="landing-eyebrow mb-4">In the wild</div>
 							<h2 className="landing-heading">
-								People are already{" "}
-								<span className="landing-heading-muted">
-									building around it.
-								</span>
+								People are already <span className="landing-heading-muted">building around it.</span>
 							</h2>
 						</div>
 						<div className="lg:col-span-5">

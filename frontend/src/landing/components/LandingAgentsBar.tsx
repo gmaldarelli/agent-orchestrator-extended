@@ -58,12 +58,7 @@ export function LandingAgentsBar() {
 								className="group flex h-[82px] w-[112px] shrink-0 flex-col items-center justify-end gap-2 px-2 py-2"
 							>
 								<div className="agent-logo-tile">
-									<img
-										src={agent.src}
-										alt=""
-										referrerPolicy="no-referrer"
-										className="agent-logo-image"
-									/>
+									<img src={agent.src} alt="" referrerPolicy="no-referrer" className="agent-logo-image" />
 								</div>
 								<div className="max-w-full truncate font-mono text-[12px] leading-none tracking-[0.04em] text-[color:var(--fg-dim)]">
 									{agent.name}

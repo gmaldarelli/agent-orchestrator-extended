@@ -198,9 +198,7 @@ export function LandingFeatures() {
 						<div className="landing-eyebrow mb-4">What&apos;s inside</div>
 						<h2 className="landing-heading">
 							Run the agent you already use.
-							<span className="landing-heading-muted block">
-								AO wraps the workflow around it.
-							</span>
+							<span className="landing-heading-muted block">AO wraps the workflow around it.</span>
 						</h2>
 					</div>
 					<div className="lg:col-span-5">
@@ -384,7 +382,6 @@ function AgentHarnessDemo({
 							<TerminalLine success text="activity      hooks installed, session visible" />
 						</div>
 					</div>
-
 				</div>
 			</div>
 		</article>
@@ -423,9 +420,7 @@ function AgentSelectLabel({
 function AgentLogo({ agent, className }: { agent: AgentHarness; className: string }) {
 	if (!agent.logo) {
 		return (
-			<div
-				className={`${className} agent-logo-frame text-xs font-bold text-[color:var(--fg-muted)]`}
-			>
+			<div className={`${className} agent-logo-frame text-xs font-bold text-[color:var(--fg-muted)]`}>
 				{agent.name.slice(0, 1)}
 			</div>
 		);
@@ -604,7 +599,6 @@ function WorkspaceIsolationDemo({
 								</div>
 							</div>
 						</div>
-
 					</div>
 				</div>
 			</div>
@@ -773,7 +767,6 @@ function FeedbackRoutingDemo({
 							</div>
 						</div>
 					</div>
-
 				</div>
 			</div>
 		</article>
@@ -817,7 +810,6 @@ function DaemonControlDemo() {
 							))}
 						</div>
 					</div>
-
 				</div>
 
 				<aside className="bg-[#050506] p-4">
