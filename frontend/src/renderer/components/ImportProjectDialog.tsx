@@ -1,15 +1,5 @@
 import * as Dialog from "@radix-ui/react-dialog";
-import {
-	ArrowLeft,
-	CheckCircle2,
-	Folder,
-	FolderPlus,
-	GitBranch,
-	Package,
-	RefreshCw,
-	X,
-	XCircle,
-} from "lucide-react";
+import { ArrowLeft, CheckCircle2, Folder, FolderPlus, GitBranch, Package, RefreshCw, X, XCircle } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import type React from "react";
 import { aoBridge } from "../lib/bridge";
@@ -175,7 +165,10 @@ export function ImportProjectDialog({ error, isImporting, onOpenChange, onSubmit
 										</div>
 										<div className="mt-3 grid gap-1.5 pl-5">
 											{["web-app", "api-server", "shared-libs"].map((name) => (
-												<span key={name} className="rounded border border-border bg-background px-2 py-1 font-mono text-[11px] text-muted-foreground">
+												<span
+													key={name}
+													className="rounded border border-border bg-background px-2 py-1 font-mono text-[11px] text-muted-foreground"
+												>
 													{name}
 												</span>
 											))}
@@ -366,11 +359,7 @@ export function ImportProjectDialog({ error, isImporting, onOpenChange, onSubmit
 										</Button>
 										<Button type="button" variant="primary" disabled={!canImport} onClick={() => void submit()}>
 											<Package className="size-3.5" aria-hidden="true" />
-											{isImporting
-												? "Importing..."
-												: mode === "workspace"
-													? "Import workspace"
-													: "Import project"}
+											{isImporting ? "Importing..." : mode === "workspace" ? "Import workspace" : "Import project"}
 										</Button>
 									</div>
 								</div>

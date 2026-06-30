@@ -875,7 +875,9 @@ async function scanImportFolder(rootPath: string, mode: "project" | "workspace")
 	);
 	return {
 		path: rootPath,
-		repos: repos.filter((repo): repo is GitRepoScanResult => repo !== null).sort((a, b) => a.name.localeCompare(b.name)),
+		repos: repos
+			.filter((repo): repo is GitRepoScanResult => repo !== null)
+			.sort((a, b) => a.name.localeCompare(b.name)),
 	};
 }
 
