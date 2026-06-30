@@ -582,8 +582,13 @@ function sessionReviewVerdict(reviewStates: PRReviewState[]): {
 	if (reviewStates.some((reviewState) => reviewState.latestRun?.verdict === "changes_requested")) {
 		return { label: "Changes requested", tone: "danger" };
 	}
-	const reviewsWithVerdicts = reviewStates.filter((reviewState) => reviewState.status !== "ineligible" && reviewState.latestRun?.verdict);
-	if (reviewsWithVerdicts.length > 0 && reviewsWithVerdicts.every((reviewState) => reviewState.latestRun?.verdict === "approved")) {
+	const reviewsWithVerdicts = reviewStates.filter(
+		(reviewState) => reviewState.status !== "ineligible" && reviewState.latestRun?.verdict,
+	);
+	if (
+		reviewsWithVerdicts.length > 0 &&
+		reviewsWithVerdicts.every((reviewState) => reviewState.latestRun?.verdict === "approved")
+	) {
 		return { label: "Approved", tone: "success" };
 	}
 	if (reviewStates.some((reviewState) => reviewState.status === "changes_requested")) {
