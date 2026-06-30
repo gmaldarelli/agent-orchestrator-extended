@@ -46,7 +46,8 @@ function ShellLayout() {
 	const workspaces = workspaceQuery.data ?? [];
 	const daemonStatus = useDaemonStatus(queryClient);
 	const { theme, setTheme, isSidebarOpen, toggleSidebar } = useUiStore();
-	const isSessionRoute = Boolean(matchRoute({ to: "/projects/$projectId/sessions/$sessionId", fuzzy: true })) ||
+	const isSessionRoute =
+		Boolean(matchRoute({ to: "/projects/$projectId/sessions/$sessionId", fuzzy: true })) ||
 		Boolean(matchRoute({ to: "/sessions/$sessionId", fuzzy: true }));
 
 	const updateWorkspaces = useCallback(
