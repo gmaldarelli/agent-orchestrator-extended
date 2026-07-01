@@ -696,8 +696,8 @@ func TestSpawn_WorkspaceProjectRollsBackAllWorktreesOnRuntimeFailure(t *testing.
 	if ws.destroyed != 0 {
 		t.Fatalf("single-workspace destroy calls = %d, want 0", ws.destroyed)
 	}
-	if !st.sessions["mer-1"].IsTerminated {
-		t.Fatal("orphaned spawn should be terminated")
+	if _, present := st.sessions["mer-1"]; present {
+		t.Fatal("seed row should be deleted after runtime creation failure")
 	}
 }
 
@@ -800,7 +800,7 @@ func TestKill_DeletesRestoreMarker(t *testing.T) {
 	m, st, _, _ := newManager()
 	st.sessions["mer-1"] = mkLive("mer-1")
 	// The session carries a leftover shutdown-saved marker from a prior cycle.
-	st.worktrees["mer-1"] = []domain.SessionWorktreeRecord{{SessionID: "mer-1", RepoName: "__root__"}}
+	st.worktrees["mer-1"] = []domain.SessionWorktreeRecord{{SessionID: "mer-1", RepoName: "__root__", State: "removed"}}
 
 	if _, err := m.Kill(ctx, "mer-1"); err != nil {
 		t.Fatalf("kill err = %v", err)
@@ -2048,7 +2048,7 @@ func TestRestoreAll_DeletesMarkerAfterRelaunch(t *testing.T) {
 		Metadata:     domain.SessionMetadata{WorkspacePath: "/ws/mer-1", Branch: "ao/mer-1/root", AgentSessionID: "agent-w"},
 		Activity:     domain.Activity{State: domain.ActivityExited},
 	}
-	st.worktrees["mer-1"] = []domain.SessionWorktreeRecord{{SessionID: "mer-1", RepoName: "__root__"}}
+	st.worktrees["mer-1"] = []domain.SessionWorktreeRecord{{SessionID: "mer-1", RepoName: "__root__", State: "removed"}}
 
 	if err := m.RestoreAll(ctx); err != nil {
 		t.Fatalf("RestoreAll err = %v", err)
@@ -2081,7 +2081,7 @@ func TestRestoreAll_KilledSessionNotResurrectedOnSecondBoot(t *testing.T) {
 		Metadata:     domain.SessionMetadata{WorkspacePath: "/ws/mer-1", Branch: "ao/mer-1/root", AgentSessionID: "agent-w"},
 		Activity:     domain.Activity{State: domain.ActivityExited},
 	}
-	st.worktrees["mer-1"] = []domain.SessionWorktreeRecord{{SessionID: "mer-1", RepoName: "__root__"}}
+	st.worktrees["mer-1"] = []domain.SessionWorktreeRecord{{SessionID: "mer-1", RepoName: "__root__", State: "removed"}}
 
 	// First boot: marker present, session relaunches once.
 	if err := m.RestoreAll(ctx); err != nil {
