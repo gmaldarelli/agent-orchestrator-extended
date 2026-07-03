@@ -173,7 +173,7 @@ describe("SessionInspector Activity section", () => {
 	it.each([
 		["idle", "Idle"],
 		["active", "Working"],
-		["waiting_input", "Input needed"],
+		["waiting_input", "Input Needed"],
 		["exited", "Exited"],
 	] as const)("renders %s from raw session activity", (state, label) => {
 		renderWithQuery(
@@ -188,6 +188,40 @@ describe("SessionInspector Activity section", () => {
 		expect(activitySection().getByText(label)).toBeInTheDocument();
 	});
 
+	it("renders unknown activity as unavailable instead of leaking the internal enum", () => {
+		renderWithQuery(
+			<SessionInspector
+				session={session([], {
+					status: "working",
+					activity: { state: "unknown", lastActivityAt: "2026-06-15T10:00:00Z" },
+				})}
+			/>,
+		);
+
+		expect(activitySection().getByText("Activity Unavailable")).toBeInTheDocument();
+		expect(activitySection().queryByText("Unknown")).not.toBeInTheDocument();
+	});
+
+	it("falls back to unavailable when no activity has been reported", () => {
+		renderWithQuery(<SessionInspector session={session([], { status: "working" })} />);
+
+		expect(activitySection().getByText("Activity Unavailable")).toBeInTheDocument();
+	});
+
+	it("keeps the last known activity visible when the daemon reports no signal", () => {
+		renderWithQuery(
+			<SessionInspector
+				session={session([], {
+					status: "no_signal",
+					activity: { state: "idle", lastActivityAt: "2026-06-15T10:00:00Z" },
+				})}
+			/>,
+		);
+
+		const activityRow = activitySection().getByText("Idle").closest(".inspector-timeline__ev") as HTMLElement;
+		expect(within(activityRow).getByText("No Signal")).toBeInTheDocument();
+	});
+
 	it("does not derive the Activity label from PR-oriented session status", () => {
 		renderWithQuery(
 			<SessionInspector
@@ -199,12 +233,12 @@ describe("SessionInspector Activity section", () => {
 		);
 
 		expect(activitySection().getByText("Idle")).toBeInTheDocument();
-		expect(activitySection().queryByText("Input needed")).not.toBeInTheDocument();
+		expect(activitySection().queryByText("Input Needed")).not.toBeInTheDocument();
 	});
 
 	it.each([
-		["ci_failed", "CI failed"],
-		["changes_requested", "Changes requested"],
+		["ci_failed", "CI Failed"],
+		["changes_requested", "Changes Requested"],
 	] as const)("renders %s as an SCM state in the current Activity row", (status, label) => {
 		renderWithQuery(
 			<SessionInspector
@@ -265,8 +299,8 @@ describe("SessionInspector Activity section", () => {
 		expect(activitySection().getByText("Opened")).toBeInTheDocument();
 		expect(activitySection().getByText("PR #7")).toBeInTheDocument();
 		const activityRow = activitySection().getByText("Idle").closest(".inspector-timeline__ev") as HTMLElement;
-		expect(within(activityRow).getByText("CI failed")).toBeInTheDocument();
-		expect(within(activityRow).getByText("Changes requested")).toBeInTheDocument();
+		expect(within(activityRow).getByText("CI Failed")).toBeInTheDocument();
+		expect(within(activityRow).getByText("Changes Requested")).toBeInTheDocument();
 	});
 
 	it("orders timeline milestones around the combined current state row", () => {

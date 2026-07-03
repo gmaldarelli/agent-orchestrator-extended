@@ -298,6 +298,11 @@ function ActivityTimeline({ session }: { session: WorkspaceSession }) {
 				<span className="inspector-timeline__badge">
 					<InspectorActivityPill state={session.activity?.state ?? "unknown"} />
 				</span>
+				{session.status === "no_signal" ? (
+					<span className="inspector-timeline__badge">
+						<TimelinePill {...ACTIVITY_WARNING_PILL.no_signal} />
+					</span>
+				) : null}
 				{scmTimelineStates(session).map((state) => (
 					<span key={state} className="inspector-timeline__badge">
 						<InspectorScmPill state={state} />
@@ -352,16 +357,20 @@ function ActivityTimeline({ session }: { session: WorkspaceSession }) {
 const ACTIVITY_PILL: Record<SessionActivityState, { label: string; tone: string; breathe: boolean }> = {
 	active: { label: "Working", tone: "var(--orange)", breathe: true },
 	idle: { label: "Idle", tone: "var(--fg-muted)", breathe: false },
-	waiting_input: { label: "Input needed", tone: "var(--amber)", breathe: false },
+	waiting_input: { label: "Input Needed", tone: "var(--amber)", breathe: false },
 	exited: { label: "Exited", tone: "var(--fg-muted)", breathe: false },
-	unknown: { label: "Unknown", tone: "var(--fg-muted)", breathe: false },
+	unknown: { label: "Activity Unavailable", tone: "var(--fg-muted)", breathe: false },
+};
+
+const ACTIVITY_WARNING_PILL: Record<"no_signal", { label: string; tone: string; breathe: boolean }> = {
+	no_signal: { label: "No Signal", tone: "var(--fg-muted)", breathe: false },
 };
 
 type ScmTimelineState = "ci_failed" | "changes_requested" | "conflict";
 
 const SCM_PILL: Record<ScmTimelineState, { label: string; tone: string; breathe: boolean }> = {
-	ci_failed: { label: "CI failed", tone: "var(--red)", breathe: false },
-	changes_requested: { label: "Changes requested", tone: "var(--amber)", breathe: false },
+	ci_failed: { label: "CI Failed", tone: "var(--red)", breathe: false },
+	changes_requested: { label: "Changes Requested", tone: "var(--amber)", breathe: false },
 	conflict: { label: "Conflict", tone: "var(--red)", breathe: false },
 };
 
