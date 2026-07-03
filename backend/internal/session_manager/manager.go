@@ -276,7 +276,7 @@ func (m *Manager) Spawn(ctx context.Context, cfg ports.SpawnConfig) (domain.Sess
 		return domain.SessionRecord{}, fmt.Errorf("spawn: create: %w", err)
 	}
 	id := rec.ID
-	systemPromptFile, err := m.writeSystemPromptFile(id, systemPrompt)
+	systemPromptFile, err := m.prepareSystemPromptFile(id, cfg.Harness, systemPrompt)
 	if err != nil {
 		m.rollbackSpawnSeedRow(ctx, id)
 		return domain.SessionRecord{}, fmt.Errorf("spawn %s: system prompt file: %w", id, err)
@@ -803,7 +803,7 @@ func (m *Manager) relaunchRestoredSession(ctx context.Context, rec domain.Sessio
 	if err != nil {
 		return domain.SessionRecord{}, fmt.Errorf("restore %s: system prompt: %w", rec.ID, err)
 	}
-	systemPromptFile, err := m.writeSystemPromptFile(rec.ID, systemPrompt)
+	systemPromptFile, err := m.prepareSystemPromptFile(rec.ID, rec.Harness, systemPrompt)
 	if err != nil {
 		return domain.SessionRecord{}, fmt.Errorf("restore %s: system prompt file: %w", rec.ID, err)
 	}
@@ -1857,29 +1857,28 @@ func (m *Manager) writeSystemPromptFile(id domain.SessionID, systemPrompt string
 	return path, nil
 }
 
-func orchestratorPrompt(project domain.ProjectID) string {
-	return fmt.Sprintf(`## Orchestrator role
-
-You are the human-facing coordinator for project %s. Coordinate work for the human, keep the project moving, and avoid doing implementation yourself unless it is necessary.
-
-Spawn worker sessions for implementation with:
-`+"`ao spawn --project %s --name \"<label, max 20 chars>\" --prompt \"<clear worker task>\"`"+`
-Both --project and --name are required.
-
-To run a worker on a specific agent, add `+"`--agent <name>`"+` (an alias for `+"`--harness`"+`) — for example `+"`--agent codex`"+` or `+"`--agent claude-code`"+`. If you omit it, the project's default worker agent is used. Run `+"`ao spawn --help`"+` for the full list of agents and every flag.
-
-Message workers with `+"`ao send`"+`, for example:
-`+"`ao send --session <worker-session-id> --message \"<your message>\"`"+`
-
-To discover any other AO command, run `+"`ao --help`"+` (and `+"`ao <command> --help`"+` for details on one).
-
-Use workers for focused implementation tasks, track their progress, synthesize their results, and only step into implementation directly for true emergencies or small coordination fixes.`, project, project)
+func (m *Manager) prepareSystemPromptFile(id domain.SessionID, harness domain.AgentHarness, systemPrompt string) (string, error) {
+	path, err := m.writeSystemPromptFile(id, systemPrompt)
+	if err == nil || path != "" {
+		return path, err
+	}
+	if systemPromptFileRequired(harness) {
+		return "", err
+	}
+	m.logger.Warn("system prompt file unavailable; falling back to inline system prompt", "session", id, "harness", harness, "err", err)
+	return "", nil
 }
 
-func workerRolePrompt() string {
-	return `## Worker role
+func systemPromptFileRequired(harness domain.AgentHarness) bool {
+	return harness == domain.HarnessAider
+}
 
-You are an implementation worker for this AO session. Focus on the assigned task, inspect the relevant code and tests before editing, keep changes scoped, verify the behavior you touched, and report blockers clearly.`
+func orchestratorCommandReference(project domain.ProjectID) string {
+	return fmt.Sprintf("## AO Command Reference\n\n"+
+		"Spawn worker sessions for implementation with:\n"+
+		"`ao spawn --project %s --name \"<label, max 20 chars>\" --prompt \"<clear worker task>\"`\n\n"+
+		"To run a worker on a specific agent, add `--agent <name>`. Run `ao spawn --help` for the full list of agents and every flag.\n\n"+
+		"To discover any other AO command, run `ao --help` and `ao <command> --help` for command-specific details.", project)
 }
 
 func workspaceOrchestratorPrompt(repos []domain.WorkspaceRepoRecord) string {
@@ -1911,14 +1910,6 @@ func workspaceRepoList(repos []domain.WorkspaceRepoRecord) string {
 		lines = append(lines, fmt.Sprintf("- %s: %s", repo.Name, repo.RelativePath))
 	}
 	return strings.Join(lines, "\n")
-}
-
-func orchestratorCommandReference(project domain.ProjectID) string {
-	return fmt.Sprintf("## AO Command Reference\n\n"+
-		"Spawn worker sessions for implementation with:\n"+
-		"`ao spawn --project %s --name \"<label, max 20 chars>\" --prompt \"<clear worker task>\"`\n\n"+
-		"To run a worker on a specific agent, add `--agent <name>`. Run `ao spawn --help` for the full list of agents and every flag.\n\n"+
-		"To discover any other AO command, run `ao --help` and `ao <command> --help` for command-specific details.", project)
 }
 
 func usingAOSkillPrompt(dataDir string) string {

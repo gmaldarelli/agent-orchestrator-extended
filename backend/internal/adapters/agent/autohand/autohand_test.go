@@ -34,7 +34,7 @@ func TestGetLaunchCommandBuildsArgv(t *testing.T) {
 		Prompt:           "-fix this",
 		WorkspacePath:    "/work/space",
 		SystemPromptFile: filepath.Join("tmp", "prompt with spaces.md"),
-		SystemPrompt:     "ignored",
+		SystemPrompt:     "inline wins",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -44,7 +44,7 @@ func TestGetLaunchCommandBuildsArgv(t *testing.T) {
 		"autohand",
 		"--path", "/work/space",
 		"--unrestricted",
-		"--sys-prompt", filepath.Join("tmp", "prompt with spaces.md"),
+		"--sys-prompt", "inline wins",
 		"--", "-fix this",
 	}
 	if !reflect.DeepEqual(cmd, want) {
