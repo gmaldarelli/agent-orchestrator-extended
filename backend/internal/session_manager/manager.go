@@ -1925,33 +1925,6 @@ func usingAOSkillPrompt(dataDir string) string {
 	return fmt.Sprintf("## AO CLI Skill\n\nDetailed AO command guidance is available at `%s`.", filepath.Join(skillassets.Dir(dataDir), "SKILL.md"))
 }
 
-func workerOrchestratorPrompt(orchestratorID domain.SessionID) string {
-	return fmt.Sprintf(`## Orchestrator coordination
-
-An active orchestrator session exists for this project. If you hit a true blocker or need cross-session coordination, message it with:
-`+"`ao send --session %s --message \"<your message>\"`"+`
-
-Only ping the orchestrator for true blockers, cross-session coordination, or decisions that cannot be resolved within your own task.`, orchestratorID)
-}
-
-// workerMultiPRPrompt explains the branch convention AO uses to attribute pull
-// requests to this session. A worker may open several PRs in one session: AO
-// tracks every open PR whose source branch is the session's own branch or lives
-// in the same session namespace. Stacking a PR on top of another therefore only
-// requires branching off with a `<session-namespace>/<topic>` name; PRs on
-// unrelated branches are attributed to whichever session owns their namespace.
-func workerMultiPRPrompt() string {
-	return `## Pull requests for this session
-
-You can open more than one pull request from this session. AO attributes a PR to you when its source branch is your session's working branch or another branch in the same session namespace.
-
-- If your current branch ends in ` + "`/root`" + `, create independent PR branches as siblings under the same namespace, for example ` + "`<namespace>/<topic>`" + ` from ` + "`<namespace>/root`" + `. Do not create ` + "`<namespace>/root/<topic>`" + `.
-- Otherwise, create each source branch as a child of your session branch (` + "`your-branch/<topic>`" + `) so it stays in this session's namespace, then open the PR targeting your base branch as usual. The PR can target the base branch; only the source branch needs to stay under your session namespace for AO to track it.
-- To stack a PR on top of another (so it merges after its parent), create the child branch from the parent branch and name it ` + "`<parent-branch>/<topic>`" + `, then target the parent branch in the PR. AO recognizes the stack from the branch relationship and will only nudge you to resolve conflicts on the bottom-most PR.
-
-Keep branch names within your session's branch namespace so AO can track every PR you open.`
-}
-
 // spawnEnv builds the runtime environment: the per-project env vars first, then
 // the AO-internal vars last so they always win (a project cannot override
 // AO_SESSION_ID and friends).
