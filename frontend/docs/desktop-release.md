@@ -135,8 +135,12 @@ Approval is governed by required reviewers on the `release` environment
 - @Vaibhaav-Tiwari
 - @Priyanchew
 
-Self-review is allowed (the tag pusher may approve their own run) and repo
-admins can bypass. The current list is readable by anyone with repo access:
+Anyone with write access can push the `desktop-v*` tag, but the build jobs
+stay in `waiting` until one of the approvers above approves the run, so only
+they can actually cut a release through the workflow. Self-review is allowed,
+meaning a tag pusher who is also an approver may approve their own run; a
+pusher who is not an approver still needs one of the five. Repo admins can
+bypass the gate. The current list is readable by anyone with repo access:
 
 ```bash
 gh api repos/AgentWrapper/agent-orchestrator/environments/release \
