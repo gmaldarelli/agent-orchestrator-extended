@@ -47,6 +47,7 @@ import {
 	SidebarMenu,
 	SidebarMenuButton,
 	SidebarMenuItem,
+	SidebarRail,
 	SidebarMenuSub,
 	SidebarMenuSubItem,
 	SidebarTrigger,
@@ -75,6 +76,10 @@ const HOVER_ACTION_CLASS =
 // Mirrors the daemon's display-name cap (maxDisplayNameLen) and the spawn
 // `--name` flag, so inline edits never round-trip a value the API would reject.
 const MAX_DISPLAY_NAME_LEN = 20;
+const SIDEBAR_DEFAULT_WIDTH = 240;
+const SIDEBAR_MIN_WIDTH = 200;
+const SIDEBAR_MAX_WIDTH = 420;
+const SIDEBAR_COLLAPSE_THRESHOLD = SIDEBAR_MIN_WIDTH;
 
 type SidebarProps = {
 	daemonStatus: { state: string; message?: string };
@@ -138,7 +143,7 @@ export function Sidebar({
 }: SidebarProps) {
 	const selection = useSelection();
 	const eventsConnection = useEventsConnection();
-	const { state } = useSidebar();
+	const { state, setOpen } = useSidebar();
 	const isCollapsed = state === "collapsed";
 	const theme = useUiStore((s) => s.theme);
 	const toggleTheme = useUiStore((s) => s.toggleTheme);
@@ -164,13 +169,20 @@ export function Sidebar({
 	// agent-orchestrator's sidebar resize: drag the right edge (200-420px,
 	// persisted), double-click to reset to 240px. Drives --ao-sidebar-w on :root,
 	// which the provider forwards into shadcn's --sidebar-width.
-	const { onPointerDown: onResizePointerDown, onDoubleClick: onResizeDoubleClick } = useResizable({
+	const {
+		onPointerDown: onResizePointerDown,
+		onCollapsedPointerDown: onCollapsedResizePointerDown,
+		onDoubleClick: onResizeDoubleClick,
+	} = useResizable({
 		cssVar: "--ao-sidebar-w",
 		storageKey: "ao-sidebar-w",
-		defaultWidth: 240,
-		min: 200,
-		max: 420,
+		defaultWidth: SIDEBAR_DEFAULT_WIDTH,
+		min: SIDEBAR_MIN_WIDTH,
+		max: SIDEBAR_MAX_WIDTH,
 		edge: "right",
+		collapseBelow: SIDEBAR_COLLAPSE_THRESHOLD,
+		onCollapse: () => setOpen(false),
+		onExpand: () => setOpen(true),
 	});
 
 	return (
@@ -184,7 +196,7 @@ export function Sidebar({
 			<SidebarHeader className="gap-0 p-0 pl-2.5 pr-[7px] pt-3.5 group-data-[collapsible=icon]:px-1.5">
 				{/* Brand (project-sidebar__brand); in the icon rail it becomes the old
             36px board button wrapping the 22px accent mark. */}
-				<div className="flex shrink-0 items-center gap-2.5 px-2 pb-[18px] group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:pb-2">
+				<div className="flex shrink-0 items-center gap-2.5 px-2 pb-[18px] group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:gap-1 group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:pb-2">
 					<Tooltip>
 						<TooltipTrigger asChild>
 							<button
@@ -206,6 +218,17 @@ export function Sidebar({
 							Orchestrator board
 						</TooltipContent>
 					</Tooltip>
+					{!isMac && (
+						<Tooltip>
+							<TooltipTrigger asChild>
+								<SidebarTrigger
+									aria-label="Expand sidebar"
+									className="hidden size-9 shrink-0 rounded-lg text-passive hover:bg-interactive-hover hover:text-foreground group-data-[collapsible=icon]:grid [&_svg]:size-4"
+								/>
+							</TooltipTrigger>
+							<TooltipContent side="right">Expand sidebar · ⌘B</TooltipContent>
+						</Tooltip>
+					)}
 					<span className="min-w-0 flex-1 truncate text-[14px] font-bold tracking-[-0.015em] text-foreground group-data-[collapsible=icon]:hidden">
 						Agent Orchestrator
 					</span>
@@ -224,7 +247,10 @@ export function Sidebar({
 					{!isMac && (
 						<Tooltip>
 							<TooltipTrigger asChild>
-								<SidebarTrigger className="size-[18px] shrink-0 rounded-[4px] p-0 text-passive hover:bg-interactive-hover hover:text-foreground group-data-[collapsible=icon]:hidden [&_svg]:size-[15px]" />
+								<SidebarTrigger
+									aria-label="Collapse sidebar"
+									className="size-[18px] shrink-0 rounded-[4px] p-0 text-passive hover:bg-interactive-hover hover:text-foreground group-data-[collapsible=icon]:hidden [&_svg]:size-[15px]"
+								/>
 							</TooltipTrigger>
 							<TooltipContent>Collapse sidebar · ⌘B</TooltipContent>
 						</Tooltip>
@@ -280,8 +306,8 @@ export function Sidebar({
           (flex-1) with a uniform 7px footer inset on all sides (reference uses
           12px top, 0 bottom, content-hugging button). The icon rail keeps the
           icon-only settings action plus expand toggle (off macOS). */}
-			<SidebarFooter className="mt-auto gap-0 border-t border-border p-[7px] group-data-[collapsible=icon]:items-center group-data-[collapsible=icon]:px-1.5 group-data-[collapsible=icon]:pb-0 group-data-[collapsible=icon]:pt-2">
-				<div className="relative flex w-full items-center group-data-[collapsible=icon]:hidden">
+			<SidebarFooter className="relative mt-auto min-h-[51px] gap-0 overflow-hidden border-t border-border p-[7px] transition-[padding] duration-200 ease-linear group-data-[collapsible=icon]:items-center group-data-[collapsible=icon]:px-1.5">
+				<div className="relative flex min-h-[37px] w-full min-w-[186px] items-center transition-[opacity,transform] duration-150 ease-out group-data-[collapsible=icon]:pointer-events-none group-data-[collapsible=icon]:-translate-x-2 group-data-[collapsible=icon]:opacity-0">
 					<DropdownMenu>
 						<DropdownMenuTrigger asChild>
 							<button
@@ -341,7 +367,7 @@ export function Sidebar({
 						</TooltipContent>
 					</Tooltip>
 				</div>
-				<div className="hidden flex-col items-center gap-1 pb-3.5 group-data-[collapsible=icon]:flex">
+				<div className="pointer-events-none absolute inset-x-1.5 top-[7px] flex min-h-[37px] flex-col items-center justify-center gap-1 opacity-0 transition-opacity duration-150 ease-out group-data-[collapsible=icon]:pointer-events-auto group-data-[collapsible=icon]:opacity-100">
 					<DropdownMenu>
 						<Tooltip>
 							<TooltipTrigger asChild>
@@ -385,14 +411,6 @@ export function Sidebar({
 							</DropdownMenuItem>
 						</DropdownMenuContent>
 					</DropdownMenu>
-					{!isMac && (
-						<Tooltip>
-							<TooltipTrigger asChild>
-								<SidebarTrigger className="size-9 rounded-lg text-passive hover:bg-interactive-hover hover:text-foreground [&_svg]:size-4" />
-							</TooltipTrigger>
-							<TooltipContent side="right">Expand sidebar · ⌘B</TooltipContent>
-						</Tooltip>
-					)}
 				</div>
 			</SidebarFooter>
 
@@ -401,6 +419,12 @@ export function Sidebar({
 				onPointerDown={onResizePointerDown}
 				onDoubleClick={onResizeDoubleClick}
 				style={noDragStyle}
+			/>
+			<SidebarRail
+				aria-label="Expand sidebar"
+				className="group-data-[state=expanded]:hidden hover:after:bg-transparent"
+				onClick={() => setOpen(true)}
+				onPointerDown={onCollapsedResizePointerDown}
 			/>
 		</SidebarRoot>
 	);
