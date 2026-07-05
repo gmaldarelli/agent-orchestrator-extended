@@ -96,11 +96,11 @@ The desktop app is the main control surface: projects on the left, active sessio
 
 AO ships adapters for 23 worker agent harnesses:
 
-`claude-code` · `codex` · `aider` · `opencode` · `grok` · `droid` · `amp` · `agy` · `crush` · `cursor` · `qwen` · `copilot` · `goose` · `auggie` · `continue` · `devin` · `cline` · `kimi` · `kiro` · `kilocode` · `vibe` · `pi` · `autohand`
+<img src="frontend/src/landing/public/docs/logos/claude-code.svg" width="16" valign="middle" /> `claude-code` · <img src="frontend/src/landing/public/docs/logos/codex.svg" width="16" valign="middle" /> `codex` · <img src="frontend/src/landing/public/docs/logos/aider.png" width="16" valign="middle" /> `aider` · <img src="frontend/src/landing/public/docs/logos/opencode.svg" width="16" valign="middle" /> `opencode` · <img src="frontend/src/landing/public/docs/logos/grok.png" width="16" valign="middle" /> `grok` · <img src="frontend/src/landing/public/docs/logos/droid.png" width="16" valign="middle" /> `droid` · `amp` · `agy` · <img src="frontend/src/landing/public/docs/logos/crush.png" width="16" valign="middle" /> `crush` · <img src="frontend/src/landing/public/docs/logos/cursor.svg" width="16" valign="middle" /> `cursor` · <img src="frontend/src/landing/public/docs/logos/qwen.png" width="16" valign="middle" /> `qwen` · <img src="frontend/src/landing/public/docs/logos/copilot.png" width="16" valign="middle" /> `copilot` · <img src="frontend/src/landing/public/docs/logos/goose.png" width="16" valign="middle" /> `goose` · `auggie` · <img src="frontend/src/landing/public/docs/logos/continue.png" width="16" valign="middle" /> `continue` · <img src="frontend/src/landing/public/docs/logos/devin.png" width="16" valign="middle" /> `devin` · `cline` · <img src="frontend/src/landing/public/docs/logos/kimi.png" width="16" valign="middle" /> `kimi` · <img src="frontend/src/landing/public/docs/logos/kiro.png" width="16" valign="middle" /> `kiro` · <img src="frontend/src/landing/public/docs/logos/kilocode.png" width="16" valign="middle" /> `kilocode` · <img src="frontend/src/landing/public/docs/logos/vibe.png" width="16" valign="middle" /> `vibe` · <img src="frontend/src/landing/public/docs/logos/pi.png" width="16" valign="middle" /> `pi` · `autohand`
 
 Reviewer agents are configured separately. The current reviewer harnesses are:
 
-`claude-code` · `codex` · `opencode`
+<img src="frontend/src/landing/public/docs/logos/claude-code.svg" width="16" valign="middle" /> `claude-code` · <img src="frontend/src/landing/public/docs/logos/codex.svg" width="16" valign="middle" /> `codex` · <img src="frontend/src/landing/public/docs/logos/opencode.svg" width="16" valign="middle" /> `opencode`
 
 **If it runs in a terminal, it runs on Agent Orchestrator.**
 
@@ -118,26 +118,19 @@ Download the latest desktop build for your platform:
 
 <table>
   <tr>
-    <td width="50%">
+    <td width="27.5%">
       <a href="https://x.com/agent_wrapper/status/2026329204405723180">
-        <img src="screenshots/first.png" alt="Agent Orchestrator journey screenshot one" />
+        <img src="screenshots/tweet2.png" width="100%" alt="Agent Orchestrator journey screenshot one" />
       </a>
     </td>
-    <td width="50%">
+    <td width="42.5%">
       <a href="https://x.com/agent_wrapper/status/2025986105485733945">
-        <img src="screenshots/second.png" alt="Agent Orchestrator journey screenshot two" />
+        <img src="screenshots/tweet1.png" width="100%" alt="Agent Orchestrator journey screenshot two" />
       </a>
     </td>
-  </tr>
-  <tr>
-    <td width="50%">
+    <td width="30%">
       <a href="https://x.com/agent_wrapper/status/2064157228400341312">
-        <img src="screenshots/third.png" alt="Agent Orchestrator journey screenshot three" />
-      </a>
-    </td>
-    <td width="50%">
-      <a href="https://x.com/agent_wrapper/status/2024885035774738700?s=20">
-        <img src="screenshots/image.png" alt="Agent Orchestrator journey screenshot four" />
+        <img src="screenshots/tweet3.png" width="100%" alt="Agent Orchestrator journey screenshot three" />
       </a>
     </td>
   </tr>
