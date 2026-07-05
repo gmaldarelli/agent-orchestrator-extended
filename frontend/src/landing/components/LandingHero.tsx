@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import gsap from "gsap";
 import { useGSAP } from "@gsap/react";
 import { ScaledMockup } from "./ScaledMockup";
@@ -56,53 +56,58 @@ function formatCompactNumber(value: number): string {
 	return String(value);
 }
 
-const appProjects = [
-	{
-		name: "api-gateway",
-		id: "api-gateway",
-		count: 4,
-		sessions: [
-			{ title: "Split terminal mux responsibilities", zone: "working" },
-			{ title: "fix auth timeout retry loop", zone: "error" },
-			{ title: "add rate limit headers", zone: "pending" },
-		],
-	},
-	{
-		name: "webgl-preview",
-		id: "webgl-preview",
-		count: 8,
-		sessions: [
-			{ title: "Restore fallback renderer affordance", zone: "warning" },
-			{ title: "cache compiled shader programs", zone: "error" },
-			{ title: "ship frame statistics overlay", zone: "pending" },
-		],
-	},
-	{
-		name: "mobile-shell",
-		id: "mobile-shell",
-		count: 2,
-		sessions: [
-			{ title: "repair back swipe gesture", zone: "working" },
-			{ title: "profile sheet accessibility pass", zone: "success" },
-		],
-	},
-	{
-		name: "billing-portal",
-		id: "billing-portal",
-		count: 2,
-		sessions: [
-			{ title: "invoice CSV export", zone: "pending" },
-			{ title: "tax id validation errors", zone: "error" },
-		],
-	},
-];
+type BoardColumnId = "working" | "action" | "pending" | "merge";
+type SessionZone = "working" | "warning" | "error" | "success" | "pending";
 
-const appColumns = [
-	{
+type BoardCard = {
+	agent: string;
+	branch: string;
+	column: BoardColumnId;
+	meta: string;
+	status: string;
+	title: string;
+	zone: SessionZone;
+};
+
+type AppProject = {
+	description: string;
+	id: string;
+	name: string;
+	shortName: string;
+	cards: BoardCard[];
+};
+
+const columnDefinitions: Record<BoardColumnId, { title: string; color: string; glow: string }> = {
+	working: {
 		title: "Working",
-		level: "working",
 		color: "#f59f4c",
 		glow: "rgba(245,159,76,0.07)",
+	},
+	action: {
+		title: "Needs you",
+		color: "#e8c14a",
+		glow: "rgba(232,193,74,0.06)",
+	},
+	pending: {
+		title: "In review",
+		color: "#7f8794",
+		glow: "rgba(255,255,255,0.02)",
+	},
+	merge: {
+		title: "Ready to merge",
+		color: "#74b98a",
+		glow: "rgba(116,185,138,0.07)",
+	},
+};
+
+const columnOrder: BoardColumnId[] = ["working", "action", "pending", "merge"];
+
+const appProjects: AppProject[] = [
+	{
+		name: "atlas-api",
+		id: "atlas-api",
+		shortName: "API",
+		description: "Edge API, auth, rate limits",
 		cards: [
 			{
 				status: "Working",
@@ -110,58 +115,140 @@ const appColumns = [
 				title: "Split terminal mux responsibilities",
 				branch: "session/ao-204",
 				meta: "no PR yet",
+				column: "working",
+				zone: "working",
 			},
-		],
-	},
-	{
-		title: "Needs you",
-		level: "action",
-		color: "#e8c14a",
-		glow: "rgba(232,193,74,0.06)",
-		cards: [
 			{
 				status: "CI failed",
 				agent: "codex",
 				title: "fix auth timeout retry loop",
 				branch: "fix/auth-timeouts",
 				meta: "PR #184 · open",
+				column: "action",
+				zone: "error",
 			},
-		],
-	},
-	{
-		title: "In review",
-		level: "pending",
-		color: "#646a73",
-		glow: "rgba(255,255,255,0.02)",
-		cards: [
 			{
 				status: "Review pending",
 				agent: "opencode",
 				title: "add rate limit headers",
 				branch: "feat/rate-limit-headers",
 				meta: "PR #185 · open",
+				column: "pending",
+				zone: "pending",
 			},
-		],
-	},
-	{
-		title: "Ready to merge",
-		level: "merge",
-		color: "#74b98a",
-		glow: "rgba(116,185,138,0.07)",
-		cards: [
 			{
 				status: "Ready",
 				agent: "cursor",
 				title: "Ship onboarding smoke test",
 				branch: "test/onboarding-harness",
 				meta: "PR #204 · approved",
+				column: "merge",
+				zone: "success",
+			},
+		],
+	},
+	{
+		name: "canvas-preview",
+		id: "canvas-preview",
+		shortName: "GL",
+		description: "In-app browser and preview runtime",
+		cards: [
+			{
+				status: "Working",
+				agent: "goose",
+				title: "Restore fallback renderer affordance",
+				branch: "fix/webgl-fallback",
+				meta: "no PR yet",
+				column: "working",
+				zone: "working",
+			},
+			{
+				status: "Blocked",
+				agent: "codex",
+				title: "cache compiled shader programs",
+				branch: "perf/shader-cache",
+				meta: "needs repro trace",
+				column: "action",
+				zone: "error",
+			},
+			{
+				status: "Review pending",
+				agent: "aider",
+				title: "ship frame statistics overlay",
+				branch: "feat/frame-stats",
+				meta: "PR #219 · open",
+				column: "pending",
+				zone: "pending",
 			},
 			{
 				status: "Approved",
+				agent: "cursor",
+				title: "stabilize browser preview sizing",
+				branch: "fix/browser-bounds",
+				meta: "PR #221 · approved",
+				column: "merge",
+				zone: "success",
+			},
+		],
+	},
+	{
+		name: "mobile-client",
+		id: "mobile-client",
+		shortName: "IOS",
+		description: "Mobile shell and handoff flows",
+		cards: [
+			{
+				status: "Working",
+				agent: "claude",
+				title: "repair back swipe gesture",
+				branch: "fix/back-swipe",
+				meta: "no PR yet",
+				column: "working",
+				zone: "working",
+			},
+			{
+				status: "Ready",
+				agent: "opencode",
+				title: "profile sheet accessibility pass",
+				branch: "a11y/profile-sheet",
+				meta: "PR #232 · approved",
+				column: "merge",
+				zone: "success",
+			},
+		],
+	},
+	{
+		name: "revenue-portal",
+		id: "revenue-portal",
+		shortName: "REV",
+		description: "Billing, invoices, tax flows",
+		cards: [
+			{
+				status: "Review pending",
 				agent: "aider",
-				title: "publish linux desktop install path",
-				branch: "docs/linux-install",
-				meta: "PR #211 · 2 approvals",
+				title: "invoice CSV export",
+				branch: "feat/invoice-csv",
+				meta: "PR #240 · open",
+				column: "pending",
+				zone: "pending",
+			},
+			{
+				status: "Needs input",
+				agent: "codex",
+				title: "tax id validation errors",
+				branch: "fix/tax-id-errors",
+				meta: "review comment waiting",
+				column: "action",
+				zone: "error",
+			},
+			{
+				status: "Approved",
+				agent: "cursor",
+				title: "receipt email copy refresh",
+				branch: "copy/receipt-email",
+				meta: "PR #244 · approved",
+				column: "merge",
+				zone: "success",
 			},
 		],
 	},
@@ -257,18 +344,59 @@ function SidebarIcon({ className = "" }: { className?: string }) {
 }
 
 function HeroDashboardMockup() {
-	const [activeProject, setActiveProject] = useState("api-gateway");
+	const [projectsState, setProjectsState] = useState<AppProject[]>(appProjects);
+	const [activeProject, setActiveProject] = useState<string>("all");
 	const [activeCard, setActiveCard] = useState("fix auth timeout retry loop");
+	const [activePanel, setActivePanel] = useState<"board" | "settings" | "terminal" | "newTask">("board");
+	const [terminalTitle, setTerminalTitle] = useState("Session terminal");
 	const [sidebarOpen, setSidebarOpen] = useState(true);
 	const [openProjects, setOpenProjects] = useState<Record<string, boolean>>({
-		"api-gateway": true,
-		"webgl-preview": true,
-		"mobile-shell": true,
-		"billing-portal": true,
+		"atlas-api": true,
+		"canvas-preview": true,
+		"mobile-client": true,
+		"revenue-portal": true,
 	});
 
+	const selectedProject = projectsState.find((project) => project.id === activeProject);
+	const visibleCards = selectedProject ? selectedProject.cards : projectsState.flatMap((project) => project.cards);
+	const activeProjectLabel = selectedProject ? selectedProject.name : "All projects";
+	const doneCount = selectedProject ? Math.max(1, Math.floor(selectedProject.cards.length / 2)) : 7;
+	const boardColumns = columnOrder.map((columnId) => ({
+		...columnDefinitions[columnId],
+		id: columnId,
+		cards: visibleCards.filter((card) => card.column === columnId),
+	}));
+
+	function showBoard(projectId: string) {
+		setActiveProject(projectId);
+		setActivePanel("board");
+		const project = projectsState.find((entry) => entry.id === projectId);
+		const firstCard = project?.cards[0];
+		if (firstCard) setActiveCard(firstCard.title);
+	}
+
+	function showAllProjects() {
+		setActiveProject("all");
+		setActivePanel("board");
+		setActiveCard("All project sessions");
+	}
+
+	function showTerminal(title: string) {
+		setActivePanel("terminal");
+		setTerminalTitle(title);
+		setActiveCard(title);
+	}
+
+	function showNewTask() {
+		if (!selectedProject) {
+			showBoard(projectsState[0].id);
+		}
+		setActivePanel("newTask");
+		setActiveCard("New task");
+	}
+
 	function toggleProject(projectName: string) {
-		setActiveProject(projectName);
+		showBoard(projectName);
 		setOpenProjects((current) => ({
 			...current,
 			[projectName]: !current[projectName],
@@ -297,7 +425,7 @@ function HeroDashboardMockup() {
 									type="button"
 									onClick={() => {
 										if (sidebarOpen) {
-											setActiveProject("api-gateway");
+											showAllProjects();
 										} else {
 											setSidebarOpen(true);
 										}
@@ -336,12 +464,17 @@ function HeroDashboardMockup() {
 										<div className="text-[10.5px] font-semibold uppercase tracking-[0.09em] text-[#646a73]">
 											Projects
 										</div>
-										<button className="grid h-[18px] w-[18px] place-items-center rounded-[4px] text-[#646a73] transition-colors hover:bg-white/[0.04] hover:text-[#9ba1aa]">
+										<button
+											type="button"
+											onClick={() => showTerminal("Create project")}
+											className="grid h-[18px] w-[18px] place-items-center rounded-[4px] text-[#646a73] transition-colors hover:bg-white/[0.04] hover:text-[#9ba1aa]"
+											aria-label="Create project"
+										>
 											<PlusIcon className="h-[13px] w-[13px]" />
 										</button>
 									</div>
 									<div className="space-y-px">
-										{appProjects.map((project) => (
+										{projectsState.map((project) => (
 											<div key={project.id} className="relative">
 												<button
 													type="button"
@@ -360,7 +493,7 @@ function HeroDashboardMockup() {
 													/>
 													<span className="min-w-0 flex-1 truncate">{project.name}</span>
 													<span className="grid h-4 min-w-4 shrink-0 place-items-center rounded bg-white/[0.04] px-1 font-mono text-[10px] leading-none text-[#646a73]">
-														{project.count}
+														{project.cards.length}
 													</span>
 												</button>
 												<div className="absolute right-1 top-0 z-10 flex h-9 items-center gap-px">
@@ -370,8 +503,13 @@ function HeroDashboardMockup() {
 															type="button"
 															onClick={(event) => {
 																event.stopPropagation();
-																setActiveProject(project.id);
-																if (index === 1) setActiveCard(`Spawn ${project.name} orchestrator`);
+																if (index === 0) showBoard(project.id);
+																if (index === 1) showTerminal(`Spawn ${project.name} orchestrator`);
+																if (index === 2) {
+																	setActiveProject(project.id);
+																	setActivePanel("settings");
+																	setActiveCard(`${project.name} settings`);
+																}
 															}}
 															className="grid size-5 place-items-center rounded-md text-[#646a73] transition-colors hover:bg-white/[0.04] hover:text-[#f4f5f7] [&_svg]:size-[15px]"
 															aria-label={`${project.name} action ${index + 1}`}
@@ -382,12 +520,12 @@ function HeroDashboardMockup() {
 												</div>
 												{openProjects[project.id] ? (
 													<div className="mx-0 ml-[18px] py-1 pl-2.5">
-														{project.sessions.map((session) => (
+														{project.cards.slice(0, 3).map((session) => (
 															<button
 																type="button"
 																key={session.title}
 																onClick={() => {
-																	setActiveProject(project.id);
+																	showBoard(project.id);
 																	setActiveCard(session.title);
 																}}
 																className={`relative flex h-auto w-full items-center gap-[9px] rounded-[4px] py-[5px] pl-2.5 pr-1.5 text-left transition-colors before:absolute before:bottom-1.5 before:left-0 before:top-1.5 before:w-px before:rounded-full ${
@@ -408,11 +546,11 @@ function HeroDashboardMockup() {
 								</div>
 							) : (
 								<div className="hidden min-h-0 flex-1 flex-col items-center gap-1 px-1.5 md:flex">
-									{appProjects.map((project) => (
+									{projectsState.map((project) => (
 										<button
 											key={project.id}
 											type="button"
-											onClick={() => setActiveProject(project.id)}
+											onClick={() => showBoard(project.id)}
 											className={`grid h-9 w-9 place-items-center rounded-lg text-[13px] font-semibold uppercase transition-colors ${
 												activeProject === project.id
 													? "bg-white/[0.07] text-[#f4f5f7]"
@@ -430,6 +568,11 @@ function HeroDashboardMockup() {
 								className={`mt-auto border-t border-[rgba(255,255,255,0.06)] p-[7px] ${sidebarOpen ? "" : "flex justify-center"}`}
 							>
 								<button
+									type="button"
+									onClick={() => {
+										setActivePanel("settings");
+										setActiveCard("Settings");
+									}}
 									className={`flex h-[37px] w-full items-center gap-2.5 rounded-md p-2 text-[13px] font-medium text-[#646a73] transition-colors hover:bg-white/[0.04] hover:text-[#f4f5f7] ${sidebarOpen ? "" : "justify-center"}`}
 								>
 									<SettingsIcon className="h-[15px] w-[15px]" />
@@ -438,18 +581,18 @@ function HeroDashboardMockup() {
 							</div>
 						</aside>
 
-						<div className="flex min-w-0 flex-col bg-[#14120d]">
+						<div className="relative flex min-w-0 flex-col bg-[#14120d]">
 							<div className="flex items-center gap-3 px-[18px] pt-[22px]">
 								<div className="flex min-w-0 items-baseline gap-3">
 									<h2 className="text-[21px] font-bold tracking-[-0.025em] text-[#f4f5f7]">Board</h2>
 									<span className="text-[12.5px] text-[#646a73]">
-										Live agent sessions flowing from work → review → merge.
+										{activeProjectLabel} · sessions flowing from work → review → merge.
 									</span>
 								</div>
 								<div className="ml-auto flex shrink-0 items-center gap-2">
 									<button
 										type="button"
-										onClick={() => setActiveCard("New task drafted")}
+										onClick={showNewTask}
 										className="hero-pressable inline-flex h-[34px] items-center gap-1.5 rounded-[7px] border border-[rgba(255,255,255,0.07)] bg-[#211d14] px-[15px] text-[13px] font-semibold leading-none text-[#9ba1aa] hover:bg-[#252116] hover:text-[#f4f5f7]"
 									>
 										<PlusIcon className="h-3.5 w-3.5" />
@@ -457,7 +600,7 @@ function HeroDashboardMockup() {
 									</button>
 									<button
 										type="button"
-										onClick={() => setActiveCard("Spawn Orchestrator")}
+										onClick={() => showTerminal(`Spawn orchestrator · ${activeProjectLabel}`)}
 										className="hero-pressable inline-flex h-[34px] items-center gap-1.5 rounded-[7px] bg-[color:var(--accent)] px-[15px] text-[13px] font-semibold leading-none text-[#11140c] hover:brightness-110"
 									>
 										<NetworkIcon className="h-3.5 w-3.5" />
@@ -467,86 +610,442 @@ function HeroDashboardMockup() {
 							</div>
 
 							<div className="min-h-0 flex-1 overflow-hidden p-[18px]">
-								<div className="grid h-full grid-cols-4 gap-2">
-									{appColumns.map((column) => (
-										<section
-											key={column.title}
-											className="flex min-w-0 flex-col overflow-hidden rounded-[13px]"
-											style={{
-												background: `linear-gradient(180deg, ${column.glow}, transparent 130px), rgba(255,255,255,0.028)`,
-											}}
-										>
-											<div className="flex shrink-0 items-center gap-[9px] px-[15px] pb-[11px] pt-[14px]">
-												<span
-													className={`h-[7px] w-[7px] rounded-full ${column.level === "pending" ? "" : "pulse-dot"}`}
-													style={{
-														background: column.color,
-														boxShadow:
-															column.level === "pending"
-																? undefined
-																: `0 0 7px color-mix(in srgb, ${column.color} 60%, transparent)`,
-													}}
-												/>
-												<div
-													className="text-[11px] font-semibold uppercase tracking-[0.08em]"
-													style={{ color: column.color }}
-												>
-													{column.title}
+								{activePanel === "settings" ? (
+									<MockSettingsPanel activeProjectLabel={activeProjectLabel} />
+								) : activePanel === "terminal" ? (
+									<MockTerminalPanel activeProjectLabel={activeProjectLabel} title={terminalTitle} />
+								) : (
+									<div className="grid h-full grid-cols-4 gap-2">
+										{boardColumns.map((column) => (
+											<section
+												key={column.id}
+												className="flex min-w-0 flex-col overflow-hidden rounded-[13px]"
+												style={{
+													background: `linear-gradient(180deg, ${column.glow}, transparent 130px), rgba(255,255,255,0.028)`,
+												}}
+											>
+												<div className="flex shrink-0 items-center gap-[9px] px-[15px] pb-[11px] pt-[14px]">
+													<span
+														className={`h-[7px] w-[7px] rounded-full ${column.id === "pending" ? "" : "pulse-dot"}`}
+														style={{
+															background: column.color,
+															boxShadow:
+																column.id === "pending"
+																	? undefined
+																	: `0 0 7px color-mix(in srgb, ${column.color} 60%, transparent)`,
+														}}
+													/>
+													<div
+														className="text-[11px] font-semibold uppercase tracking-[0.08em]"
+														style={{ color: column.color }}
+													>
+														{column.title}
+													</div>
+													<span className="ml-auto font-mono text-[11px] leading-none text-[#646a73]">
+														{column.cards.length}
+													</span>
 												</div>
-												<span className="ml-auto font-mono text-[11px] leading-none text-[#646a73]">
-													{column.cards.length}
-												</span>
-											</div>
-											<div className="min-h-0 flex-1 overflow-hidden px-[11px] pb-3">
-												<div className="flex flex-col gap-2.5">
-													{column.cards.map((card) => (
-														<button
-															key={card.title}
-															type="button"
-															onClick={() => setActiveCard(card.title)}
-															className="w-full rounded-[7px] border border-[rgba(255,255,255,0.06)] bg-[#1a1812] text-left transition-colors hover:border-[rgba(255,255,255,0.10)]"
-														>
-															<div className="flex items-center gap-2 px-[13px] pb-[9px] pt-3">
-																<span
-																	className="inline-flex items-center gap-1.5 text-[11px] font-medium"
-																	style={{ color: card.status === "CI failed" ? "#ef6b6b" : column.color }}
-																>
-																	<span className="pulse-dot h-[7px] w-[7px] rounded-full bg-current" />
-																	{card.status}
-																</span>
-																<span className="ml-auto shrink-0 font-mono text-[10.5px] tracking-[0.04em] text-[#646a73]">
-																	{card.agent}
-																</span>
-															</div>
-															<div className="line-clamp-2 overflow-hidden px-[13px] pb-2 text-[13px] font-medium leading-[1.42] tracking-[-0.01em] text-[#f4f5f7]">
-																{card.title}
-															</div>
-															<div className="px-[13px] pb-2.5 font-mono text-[10.5px] text-[#646a73]">
-																{card.branch}
-															</div>
-															<div className="border-t border-[rgba(255,255,255,0.06)] px-[13px] py-2 font-mono text-[10.5px] text-[#646a73]">
-																{card.meta}
-															</div>
-														</button>
-													))}
+												<div className="min-h-0 flex-1 overflow-hidden px-[11px] pb-3">
+													<div className="flex flex-col gap-2.5">
+														{column.cards.map((card) => (
+															<button
+																key={`${card.branch}-${card.title}`}
+																type="button"
+																onClick={() => showTerminal(card.title)}
+																className="w-full rounded-[7px] border border-[rgba(255,255,255,0.06)] bg-[#1a1812] text-left transition-colors hover:border-[rgba(255,255,255,0.10)]"
+															>
+																<div className="flex items-center gap-2 px-[13px] pb-[9px] pt-3">
+																	<span
+																		className="inline-flex items-center gap-1.5 text-[11px] font-medium"
+																		style={{
+																			color:
+																				card.status === "CI failed" ||
+																				card.status === "Blocked" ||
+																				card.status === "Needs input"
+																					? "#ef6b6b"
+																					: column.color,
+																		}}
+																	>
+																		<span className="pulse-dot h-[7px] w-[7px] rounded-full bg-current" />
+																		{card.status}
+																	</span>
+																	<span className="ml-auto shrink-0 font-mono text-[10.5px] tracking-[0.04em] text-[#646a73]">
+																		{card.agent}
+																	</span>
+																</div>
+																<div className="line-clamp-2 overflow-hidden px-[13px] pb-2 text-[13px] font-medium leading-[1.42] tracking-[-0.01em] text-[#f4f5f7]">
+																	{card.title}
+																</div>
+																<div className="px-[13px] pb-2.5 font-mono text-[10.5px] text-[#646a73]">
+																	{card.branch}
+																</div>
+																<div className="border-t border-[rgba(255,255,255,0.06)] px-[13px] py-2 font-mono text-[10.5px] text-[#646a73]">
+																	{card.meta}
+																</div>
+															</button>
+														))}
+													</div>
 												</div>
-											</div>
-										</section>
-									))}
-								</div>
+											</section>
+										))}
+									</div>
+								)}
 							</div>
+							{activePanel === "newTask" ? (
+								<MockNewTaskDialog
+									activeProjectLabel={selectedProject?.name ?? projectsState[0].name}
+									onClose={() => setActivePanel("board")}
+									onStart={(newTask) => {
+										setProjectsState((current) =>
+											current.map((p) => {
+												if (p.id === (selectedProject?.id ?? current[0].id)) {
+													return { ...p, cards: [newTask, ...p.cards] };
+												}
+												return p;
+											}),
+										);
+										showTerminal(newTask.title);
+									}}
+								/>
+							) : null}
 							<div className="shrink-0 border-t border-[rgba(255,255,255,0.06)] px-[18px]">
 								<div className="flex min-h-[51px] items-center gap-2 py-2 text-[#9ba1aa]">
 									<ChevronIcon className="h-3 w-3 text-[#646a73]" />
 									<span className="font-mono text-[10.5px] font-medium uppercase tracking-[0.05em]">
 										Done / Terminated
 									</span>
-									<span className="ml-auto shrink-0 font-mono text-[10px] text-[#646a73]">3</span>
+									<span className="ml-auto shrink-0 font-mono text-[10px] text-[#646a73]">{doneCount}</span>
 								</div>
 							</div>
 						</div>
 					</div>
 				</div>
+			</div>
+		</div>
+	);
+}
+
+function MockTerminalPanel({ activeProjectLabel, title }: { activeProjectLabel: string; title: string }) {
+	return (
+		<div className="grid h-full min-h-0 grid-cols-[minmax(0,1fr)_270px] overflow-hidden rounded-[13px] border border-[rgba(255,255,255,0.07)] bg-[#0c0d0f]">
+			<div className="flex min-w-0 flex-col bg-[#15171b]">
+				<div className="flex h-[47px] shrink-0 items-center justify-between border-b border-[rgba(255,255,255,0.07)] px-4">
+					<div className="flex min-w-0 items-baseline gap-2">
+						<span className="font-mono text-[10.5px] font-semibold uppercase tracking-[0.12em] text-[#646a73]">
+							Terminal
+						</span>
+						<span className="truncate text-[12px] font-semibold text-[#9ba1aa]">{activeProjectLabel}</span>
+					</div>
+					<div className="flex items-center gap-3 font-mono text-[10.5px] text-[#9ba1aa]">
+						<button type="button" className="text-[#646a73]">
+							-
+						</button>
+						<span>13px</span>
+						<button type="button" className="text-[#646a73]">
+							+
+						</button>
+					</div>
+				</div>
+				<div className="min-h-0 flex-1 overflow-hidden bg-[#15171b] p-4 font-mono text-[12px] leading-6 text-[#d5d7dc]">
+					<div className="text-[#f0c84b]">⚠ `--dangerously-bypass-hook-trust` is enabled.</div>
+					<div className="mt-4 rounded-[6px] border border-[rgba(255,255,255,0.22)] bg-[#17191d] p-4">
+						<div className="text-[13px] font-bold text-[#f4f5f7]">OpenAI Codex</div>
+						<div className="mt-4 grid grid-cols-[86px_1fr] gap-y-2">
+							<span className="text-[#858b95]">model:</span>
+							<span>
+								gpt-5.5 <span className="text-[#6ec8e8]">/model</span>
+							</span>
+							<span className="text-[#858b95]">directory:</span>
+							<span>~/.ao/data/worktrees/{activeProjectLabel.toLowerCase().replaceAll(" ", "-")}</span>
+							<span className="text-[#858b95]">permissions:</span>
+							<span className="font-semibold text-[#a98cff]">YOLO mode</span>
+						</div>
+					</div>
+					<div className="mt-5 text-[#f4f5f7]">› ao session open "{title}"</div>
+					<div className="mt-2 text-[#9ba1aa]">• What would you like me to do?</div>
+					<div className="mt-6">
+						<span className="text-[#f4f5f7]">› </span>
+						<span className="rounded-sm bg-[#f59f4c] px-[3px] text-[#11100b]"> </span>
+						<span className="text-[#858b95]"> Use /skills to list available skills</span>
+					</div>
+					<div className="mt-5 text-[#ffd28a]">
+						gpt-5.5 default ·{" "}
+						<span className="text-[#9bd39a]">
+							~/.ao/data/worktrees/{activeProjectLabel.toLowerCase().replaceAll(" ", "-")}
+						</span>
+					</div>
+				</div>
+			</div>
+			<aside className="flex min-w-0 flex-col border-l border-[rgba(255,255,255,0.07)] bg-[#0d0f12]">
+				<div className="flex h-[47px] shrink-0 items-center gap-1 border-b border-[rgba(255,255,255,0.07)] px-2">
+					{["Summary", "Reviews", "Browser"].map((tab, index) => (
+						<div
+							key={tab}
+							className={`flex h-8 flex-1 items-center justify-center rounded-[7px] text-[11px] font-semibold ${
+								index === 0 ? "bg-white/[0.07] text-[#f4f5f7]" : "text-[#646a73]"
+							}`}
+						>
+							{tab}
+						</div>
+					))}
+				</div>
+				<div className="min-h-0 flex-1 overflow-hidden p-4">
+					<div className="font-mono text-[10px] uppercase tracking-[0.12em] text-[#646a73]">Pull request</div>
+					<div className="mt-3 text-[12px] text-[#9ba1aa]">No pull request opened yet.</div>
+					<div className="mt-7 font-mono text-[10px] uppercase tracking-[0.12em] text-[#646a73]">Activity</div>
+					<div className="mt-4 space-y-4 text-[12px]">
+						<div className="flex gap-2">
+							<span className="mt-1.5 h-2 w-2 rounded-full bg-[#f59f4c]" />
+							<div>
+								<div className="text-[#f4f5f7]">Session active</div>
+								<div className="mt-1 font-mono text-[10px] text-[#646a73]">just now</div>
+							</div>
+						</div>
+						<div className="flex gap-2">
+							<span className="mt-1.5 h-2 w-2 rounded-full bg-[#646a73]" />
+							<div>
+								<div className="text-[#d5d7dc]">Created worktree & branch</div>
+								<div className="mt-1 font-mono text-[10px] text-[#646a73]">1d ago</div>
+							</div>
+						</div>
+					</div>
+					<div className="mt-7 font-mono text-[10px] uppercase tracking-[0.12em] text-[#646a73]">Overview</div>
+					<div className="mt-4 grid grid-cols-[70px_1fr] gap-y-3 text-[11.5px]">
+						<span className="text-[#858b95]">Agent</span>
+						<span className="font-mono text-[#f4f5f7]">codex</span>
+						<span className="text-[#858b95]">Branch</span>
+						<span className="truncate font-mono text-[#f4f5f7]">ao/{activeProjectLabel}/root</span>
+						<span className="text-[#858b95]">Session</span>
+						<span className="font-mono text-[#f4f5f7]">{title.slice(0, 16).toLowerCase()}</span>
+					</div>
+				</div>
+			</aside>
+		</div>
+	);
+}
+
+function MockSettingsPanel({ activeProjectLabel }: { activeProjectLabel: string }) {
+	return (
+		<div className="h-full min-h-0 overflow-hidden rounded-[13px] bg-[#14120d] text-[#f4f5f7]">
+			<div className="border-b border-[rgba(255,255,255,0.07)] px-5 py-4">
+				<h3 className="text-[18px] font-bold tracking-[-0.02em]">Settings</h3>
+				<div className="mt-1 font-mono text-[11px] text-[#646a73]">/repos/{activeProjectLabel}</div>
+			</div>
+			<div className="mx-auto flex max-w-[620px] flex-col gap-3 overflow-hidden p-4">
+				<SettingsCard title="Identity">
+					<ReadonlySetting label="id" value={activeProjectLabel.toLowerCase().replaceAll(" ", "-")} />
+					<ReadonlySetting label="path" value={`~/code/${activeProjectLabel.toLowerCase().replaceAll(" ", "-")}`} />
+					<ReadonlySetting label="repo" value={`github.com/acme/${activeProjectLabel}`} />
+				</SettingsCard>
+				<SettingsCard title="Worktrees">
+					<MockField label="Default branch" value="main" />
+					<MockField label="Session prefix" value="ao" />
+				</SettingsCard>
+				<SettingsCard title="Agents">
+					<MockSelect label="Default worker agent" value="codex" />
+					<MockSelect label="Default orchestrator agent" value="claude-code" />
+					<MockField label="Model override" value="(agent default)" muted />
+					<MockSelect label="Permission mode" value="Bypass permissions" />
+				</SettingsCard>
+				<div className="flex items-center gap-3 pt-1">
+					<button
+						className="h-8 rounded-md bg-[color:var(--accent)] px-3 text-[12px] font-semibold text-[#11140c]"
+						type="button"
+					>
+						Save changes
+					</button>
+					<span className="text-[12px] text-[#74b98a]">Saved.</span>
+				</div>
+			</div>
+		</div>
+	);
+}
+
+function MockNewTaskDialog({
+	activeProjectLabel,
+	onClose,
+	onStart,
+}: {
+	activeProjectLabel: string;
+	onClose: () => void;
+	onStart: (task: BoardCard) => void;
+}) {
+	const [title, setTitle] = useState("");
+	const [brief, setBrief] = useState("");
+	const [agent, setAgent] = useState("claude-code");
+	const [branch, setBranch] = useState("");
+
+	const handleStart = () => {
+		if (!title.trim()) return;
+		onStart({
+			agent,
+			branch: branch || "feat/new-task",
+			column: "working",
+			meta: "Started just now",
+			status: "Working",
+			title,
+			zone: "working",
+		});
+	};
+
+	return (
+		<div className="absolute inset-0 z-20 grid place-items-center bg-black/55 px-6">
+			<div className="w-[min(560px,calc(100%-32px))] rounded-lg border border-[rgba(255,255,255,0.09)] bg-[#111318] text-[#f4f5f7] shadow-2xl">
+				<div className="flex items-start justify-between gap-4 border-b border-[rgba(255,255,255,0.08)] px-5 py-4">
+					<div className="min-w-0">
+						<h3 className="text-[15px] font-semibold">New task</h3>
+						<p className="mt-1 text-[12px] text-[#858b95]">Start a worker directly from {activeProjectLabel}.</p>
+					</div>
+					<button
+						type="button"
+						onClick={onClose}
+						className="grid size-7 shrink-0 place-items-center rounded-md text-[#858b95] transition hover:bg-white/[0.06] hover:text-[#f4f5f7]"
+						aria-label="Close new task dialog"
+					>
+						×
+					</button>
+				</div>
+				<div className="space-y-4 px-5 py-4">
+					<DialogInput label="Title" value={title} onChange={setTitle} placeholder="e.g. Fix WebGL fallback renderer" />
+					<div className="space-y-1.5">
+						<label className="text-[12px] font-medium text-[#9ba1aa]">Brief</label>
+						<textarea
+							value={brief}
+							onChange={(e) => setBrief(e.target.value)}
+							placeholder="Describe what the agent should do..."
+							className="min-h-[112px] w-full resize-none rounded-md border border-[rgba(255,255,255,0.10)] bg-transparent px-3 py-2 text-[13px] leading-relaxed text-[#d5d7dc] outline-none focus:border-[color:var(--accent)]"
+						/>
+					</div>
+					<div className="grid gap-3 sm:grid-cols-2">
+						<DialogSelect
+							label="Agent"
+							value={agent}
+							onChange={setAgent}
+							options={["claude-code", "codex", "aider", "cursor", "opencode", "goose"]}
+						/>
+						<DialogInput label="Branch" value={branch} onChange={setBranch} placeholder="e.g. fix/webgl-fallback" />
+					</div>
+					<div className="flex items-center justify-end gap-2 pt-1">
+						<button
+							type="button"
+							onClick={onClose}
+							className="h-8 rounded-md px-3 text-[12px] font-semibold text-[#9ba1aa] transition hover:bg-white/[0.06] hover:text-[#f4f5f7]"
+						>
+							Cancel
+						</button>
+						<button
+							type="button"
+							onClick={handleStart}
+							disabled={!title.trim()}
+							className="h-8 rounded-md bg-[color:var(--accent)] px-3 text-[12px] font-semibold text-[#11140c] transition hover:brightness-110 disabled:opacity-50"
+						>
+							Start task
+						</button>
+					</div>
+				</div>
+			</div>
+		</div>
+	);
+}
+
+function SettingsCard({ children, title }: { children: ReactNode; title: string }) {
+	return (
+		<section className="rounded-lg border border-[rgba(255,255,255,0.08)] bg-white/[0.025]">
+			<div className="border-b border-[rgba(255,255,255,0.07)] px-4 py-3">
+				<div className="text-[13px] font-semibold">{title}</div>
+			</div>
+			<div className="flex flex-col gap-3 p-4">{children}</div>
+		</section>
+	);
+}
+
+function ReadonlySetting({ label, value }: { label: string; value: string }) {
+	return (
+		<div className="grid grid-cols-[90px_1fr] gap-3 font-mono text-[11px]">
+			<span className="text-[#858b95]">{label}</span>
+			<span className="truncate text-[#d5d7dc]">{value}</span>
+		</div>
+	);
+}
+
+function MockField({ label, muted = false, value }: { label: string; muted?: boolean; value: string }) {
+	return (
+		<div className="grid grid-cols-[150px_1fr] items-center gap-3">
+			<label className="text-[12px] text-[#9ba1aa]">{label}</label>
+			<div
+				className={`flex h-8 items-center rounded-md border border-[rgba(255,255,255,0.10)] bg-transparent px-2.5 text-[13px] ${
+					muted ? "text-[#646a73]" : "text-[#f4f5f7]"
+				}`}
+			>
+				{value}
+			</div>
+		</div>
+	);
+}
+
+function MockSelect({ label, value }: { label: string; value: string }) {
+	return (
+		<div className="grid grid-cols-[150px_1fr] items-center gap-3">
+			<label className="text-[12px] text-[#9ba1aa]">{label}</label>
+			<div className="flex h-8 items-center justify-between rounded-md border border-[rgba(255,255,255,0.10)] bg-[#17191d] px-2.5 text-[13px] text-[#f4f5f7]">
+				<span>{value}</span>
+				<span className="text-[#646a73]">⌄</span>
+			</div>
+		</div>
+	);
+}
+
+function DialogInput({
+	label,
+	value,
+	onChange,
+	placeholder,
+}: {
+	label: string;
+	value: string;
+	onChange: (v: string) => void;
+	placeholder?: string;
+}) {
+	return (
+		<div className="space-y-1.5">
+			<label className="text-[12px] font-medium text-[#9ba1aa]">{label}</label>
+			<input
+				value={value}
+				onChange={(e) => onChange(e.target.value)}
+				placeholder={placeholder}
+				className="flex h-8 w-full items-center justify-between rounded-md border border-[rgba(255,255,255,0.10)] bg-transparent px-3 text-[13px] text-[#f4f5f7] outline-none focus:border-[color:var(--accent)]"
+			/>
+		</div>
+	);
+}
+
+function DialogSelect({
+	label,
+	value,
+	onChange,
+	options,
+}: {
+	label: string;
+	value: string;
+	onChange: (v: string) => void;
+	options: string[];
+}) {
+	return (
+		<div className="space-y-1.5 relative">
+			<label className="text-[12px] font-medium text-[#9ba1aa]">{label}</label>
+			<div className="relative">
+				<select
+					value={value}
+					onChange={(e) => onChange(e.target.value)}
+					className="flex h-8 w-full appearance-none items-center justify-between rounded-md border border-[rgba(255,255,255,0.10)] bg-transparent pl-3 pr-8 text-[13px] text-[#f4f5f7] outline-none focus:border-[color:var(--accent)]"
+				>
+					{options.map((opt) => (
+						<option key={opt} value={opt} className="bg-[#111318]">
+							{opt}
+						</option>
+					))}
+				</select>
+				<span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[#646a73]">⌄</span>
 			</div>
 		</div>
 	);
