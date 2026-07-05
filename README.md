@@ -104,9 +104,18 @@ Reviewer agents are configured separately. The current reviewer harnesses are:
 
 **If it runs in a terminal, it runs on Agent Orchestrator.**
 
-## Download
+## Install
 
-Download the latest desktop build for your platform:
+The fastest path is the same flow used by the installation docs:
+
+```bash
+npm install -g @aoagents/ao
+ao start
+```
+
+Run `ao start` from the repository you want AO to manage. See the [installation guide](https://aoagents.dev/docs/installation) for pnpm, yarn, source installs, agent CLI setup, and troubleshooting.
+
+You can also download the latest desktop build for your platform:
 
 | Platform | Download                                                                                          |
 | -------- | ------------------------------------------------------------------------------------------------- |
@@ -120,17 +129,17 @@ Download the latest desktop build for your platform:
   <tr>
     <td width="33%">
       <a href="https://x.com/agent_wrapper/status/2026329204405723180">
-        <img src="screenshots/first.png" width="100%" alt="Agent Orchestrator journey screenshot one" />
+        <img src="screenshots/tweet1.png" width="100%" alt="Agent Orchestrator journey screenshot one" />
       </a>
     </td>
     <td width="37.5%">
       <a href="https://x.com/agent_wrapper/status/2025986105485733945">
-        <img src="screenshots/second.png" width="100%" alt="Agent Orchestrator journey screenshot two" />
+        <img src="screenshots/tweet2.png" width="100%" alt="Agent Orchestrator journey screenshot two" />
       </a>
     </td>
     <td width="29.5%">
       <a href="https://x.com/agent_wrapper/status/2024885035774738700">
-        <img src="screenshots/image.png" width="100%" alt="Agent Orchestrator journey screenshot three" />
+        <img src="screenshots/tweet3.png" width="100%" alt="Agent Orchestrator journey screenshot three" />
       </a>
     </td>
   </tr>
@@ -148,7 +157,7 @@ Download the latest desktop build for your platform:
 
 ## Telemetry
 
-Agent Orchestrator collects minimal telemetry for reliability and product understanding. Data is stored locally by default; remote transmission is opt-in through environment variables. See [docs/telemetry.md](docs/telemetry.md).
+Agent Orchestrator's Electron renderer sends anonymous usage events to PostHog for reliability and product understanding, and PostHog session recording is enabled with local paths and local URLs redacted before transmission. Set `VITE_AO_POSTHOG_KEY` to an empty string before building to disable transmission. See [docs/telemetry.md](docs/telemetry.md).
 
 ## License
 
