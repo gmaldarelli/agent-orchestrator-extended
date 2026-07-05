@@ -1,10 +1,11 @@
-import { useState, type KeyboardEvent } from "react";
+import { useEffect, useState, type KeyboardEvent } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { Plus } from "lucide-react";
 import { type AttentionZone, type WorkspaceSession, attentionZone, workerSessions } from "../types/workspace";
 import { useSessionScmSummary, type SessionPRSummary } from "../hooks/useSessionScmSummary";
 import { useWorkspaceQuery, workspaceQueryKey } from "../hooks/useWorkspaceQuery";
+import { BoardWelcome, ProjectBoardEmpty } from "./BoardEmptyState";
 import { DashboardSubhead } from "./DashboardSubhead";
 import { OrchestratorIcon } from "./icons";
 import { NewTaskDialog } from "./NewTaskDialog";
@@ -76,6 +77,10 @@ export function SessionsBoard({ projectId }: SessionsBoardProps) {
 		: undefined;
 	const [isNewTaskOpen, setIsNewTaskOpen] = useState(false);
 	const [isSpawning, setIsSpawning] = useState(false);
+	const [spawnError, setSpawnError] = useState<string | null>(null);
+	// The board instance survives project-to-project navigation (same route,
+	// new param), so a spawn failure must not follow the user to another board.
+	useEffect(() => setSpawnError(null), [projectId]);
 
 	const byZone = new Map<AttentionZone, WorkspaceSession[]>();
 	for (const session of sessions) {
@@ -83,6 +88,13 @@ export function SessionsBoard({ projectId }: SessionsBoardProps) {
 		(byZone.get(zone) ?? byZone.set(zone, []).get(zone)!).push(session);
 	}
 	const done = byZone.get("done") ?? [];
+	// First-run orientation replaces the empty column shells (only once the
+	// query has resolved, so the welcome never flashes over real data): the
+	// global board teaches the app before any project exists, and a fresh
+	// project board invites the first task instead of showing four zeros.
+	const isLoaded = workspaceQuery.isSuccess;
+	const showWelcome = !projectId && isLoaded && all.length === 0;
+	const showProjectEmpty = projectId !== undefined && isLoaded && workspaces.length > 0 && sessions.length === 0;
 	// Collapsed by default, like agent-orchestrator's done-bar: finished and
 	// killed sessions cost one quiet line under the board until expanded.
 	const [doneExpanded, setDoneExpanded] = useState(false);
@@ -102,6 +114,7 @@ export function SessionsBoard({ projectId }: SessionsBoardProps) {
 			});
 			return;
 		}
+		setSpawnError(null);
 		setIsSpawning(true);
 		try {
 			const sessionId = await spawnOrchestrator(projectId);
@@ -110,6 +123,11 @@ export function SessionsBoard({ projectId }: SessionsBoardProps) {
 				to: "/projects/$projectId/sessions/$sessionId",
 				params: { projectId, sessionId },
 			});
+		} catch (err) {
+			// Never fail silently: the daemon's message (e.g. a worktree/branch
+			// conflict) is the only actionable signal the user gets.
+			console.error("Failed to spawn orchestrator:", err);
+			setSpawnError(err instanceof Error ? err.message : "Could not spawn orchestrator");
 		} finally {
 			setIsSpawning(false);
 		}
@@ -126,6 +144,11 @@ export function SessionsBoard({ projectId }: SessionsBoardProps) {
 
 	const actions = projectId ? (
 		<>
+			{spawnError && !showProjectEmpty && (
+				<span className="dashboard-app-header__kill-error max-w-[320px] truncate" title={spawnError}>
+					{spawnError}
+				</span>
+			)}
 			<button
 				aria-label="New task"
 				className="dashboard-app-header__accent-btn"
@@ -159,6 +182,16 @@ export function SessionsBoard({ projectId }: SessionsBoardProps) {
 			<div className="min-h-0 flex-1 overflow-hidden p-[18px]">
 				{workspaceQuery.isError ? (
 					<p className="py-10 text-center text-[12px] text-passive">Could not load sessions.</p>
+				) : showWelcome ? (
+					<BoardWelcome />
+				) : showProjectEmpty ? (
+					<ProjectBoardEmpty
+						hasOrchestrator={orchestrator !== undefined}
+						isSpawning={isSpawning}
+						onNewTask={() => setIsNewTaskOpen(true)}
+						onOpenOrchestrator={() => void openOrchestrator()}
+						spawnError={spawnError}
+					/>
 				) : (
 					<div className="grid h-full grid-cols-4 gap-2">
 						{COLUMNS.map((col) => (
