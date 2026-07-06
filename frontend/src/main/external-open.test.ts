@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { isAllowedAppExternalURL } from "./external-open";
+import { describe, expect, it, vi } from "vitest";
+import { isAllowedAppExternalURL, openAllowedAppExternalURL } from "./external-open";
 
 describe("isAllowedAppExternalURL", () => {
 	it("allows web and mail handoff URLs from the app renderer", () => {
@@ -12,5 +12,22 @@ describe("isAllowedAppExternalURL", () => {
 		expect(isAllowedAppExternalURL("file:///Users/alice/private.txt")).toBe(false);
 		expect(isAllowedAppExternalURL("app://renderer/index.html")).toBe(false);
 		expect(isAllowedAppExternalURL("javascript:alert(1)")).toBe(false);
+	});
+
+	it("opens allowed URLs through the native shell opener", async () => {
+		const openExternal = vi.fn().mockResolvedValue(undefined);
+
+		await openAllowedAppExternalURL("mailto:support@aoagents.dev?subject=AO%20feedback", { openExternal });
+
+		expect(openExternal).toHaveBeenCalledWith("mailto:support@aoagents.dev?subject=AO%20feedback");
+	});
+
+	it("rejects unsupported URLs before reaching the shell opener", async () => {
+		const openExternal = vi.fn().mockResolvedValue(undefined);
+
+		await expect(openAllowedAppExternalURL("file:///Users/alice/private.txt", { openExternal })).rejects.toThrow(
+			"Unsupported external URL",
+		);
+		expect(openExternal).not.toHaveBeenCalled();
 	});
 });

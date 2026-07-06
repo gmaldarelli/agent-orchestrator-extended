@@ -308,8 +308,10 @@ describe("Sidebar", () => {
 	it("opens feedback above Settings and copies redacted report drafts", async () => {
 		const user = userEvent.setup();
 		const writeText = vi.fn().mockResolvedValue(undefined);
+		const openExternal = vi.fn().mockResolvedValue(undefined);
 		const open = vi.spyOn(window, "open").mockReturnValue(null);
 		window.ao!.clipboard.writeText = writeText;
+		window.ao!.app.openExternal = openExternal;
 		window.ao!.app.getVersion = vi.fn().mockResolvedValue("9.9.9-test");
 		window.ao!.daemon.getStatus = vi.fn().mockResolvedValue({
 			state: "ready",
@@ -351,18 +353,19 @@ describe("Sidebar", () => {
 		expect(copied).not.toContain("local-secret");
 		expect(copied).not.toContain("## Type");
 		expect(copied).not.toContain("Generated locally by AO");
-		expect(open).toHaveBeenCalledWith(
+		expect(openExternal).toHaveBeenCalledWith(
 			expect.stringContaining("https://github.com/AgentWrapper/agent-orchestrator/issues/new"),
-			"_blank",
-			"noopener,noreferrer",
 		);
+		expect(open).not.toHaveBeenCalled();
 	});
 
 	it("opens Discord with an official invite and email with the support mailbox", async () => {
 		const user = userEvent.setup();
 		const writeText = vi.fn().mockResolvedValue(undefined);
+		const openExternal = vi.fn().mockResolvedValue(undefined);
 		const open = vi.spyOn(window, "open").mockReturnValue(null);
 		window.ao!.clipboard.writeText = writeText;
+		window.ao!.app.openExternal = openExternal;
 		window.ao!.app.getVersion = vi.fn().mockRejectedValue(new Error("version unavailable"));
 		window.ao!.daemon.getStatus = vi.fn().mockRejectedValue(new Error("daemon unavailable"));
 		renderSidebar();
@@ -380,12 +383,9 @@ describe("Sidebar", () => {
 		expect(writeText.mock.calls[0][0]).toContain("Daemon: unknown");
 		expect(writeText.mock.calls[1][0]).toContain("To: support@aoagents.dev");
 		expect(writeText.mock.calls[1][0]).toContain("AO feedback");
-		expect(open).toHaveBeenCalledWith("https://discord.com/invite/UZv7JjxbwG", "_blank", "noopener,noreferrer");
-		expect(open).toHaveBeenCalledWith(
-			expect.stringContaining("mailto:support@aoagents.dev"),
-			"_blank",
-			"noopener,noreferrer",
-		);
+		expect(openExternal).toHaveBeenCalledWith("https://discord.com/invite/UZv7JjxbwG");
+		expect(openExternal).toHaveBeenCalledWith(expect.stringContaining("mailto:support@aoagents.dev"));
+		expect(open).not.toHaveBeenCalled();
 	});
 
 	it("keeps the report form to summary and details while tailoring placeholder guidance", async () => {

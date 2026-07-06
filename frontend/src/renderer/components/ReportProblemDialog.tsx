@@ -72,7 +72,7 @@ export function ReportProblemDialog({ open, onOpenChange }: ReportProblemDialogP
 			await aoBridge.clipboard.writeText(formatReportProblemDraft(input, diagnostics, output));
 			const destinationUrl = reportProblemDestinationUrl(input, diagnostics, output);
 			if (destinationUrl) {
-				window.open(destinationUrl, "_blank", "noopener,noreferrer");
+				await aoBridge.app.openExternal(destinationUrl);
 			}
 			setCopiedOutput(output);
 		} catch (err) {
