@@ -329,9 +329,11 @@ describe("Sidebar", () => {
 			screen.getByLabelText("Details"),
 			"Open http://127.0.0.1:5173/projects/demo?access_token=local-secret and click Create. Show a clear prerequisite error.",
 		);
+		expect(screen.queryByRole("combobox", { name: "Report type" })).not.toBeInTheDocument();
+		expect(screen.queryByLabelText("Include safe diagnostics")).not.toBeInTheDocument();
+		expect(screen.queryByLabelText("Report preview")).not.toBeInTheDocument();
 		expect(screen.queryByLabelText("Expected behavior")).not.toBeInTheDocument();
 
-		expect(screen.getByLabelText("Report preview")).toHaveTextContent("[redacted-local-path]");
 		await user.click(screen.getByRole("button", { name: "Copy and open GitHub" }));
 
 		await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
@@ -343,6 +345,8 @@ describe("Sidebar", () => {
 		expect(copied).toContain("[redacted-local-url]");
 		expect(copied).not.toContain("/Users/alice");
 		expect(copied).not.toContain("local-secret");
+		expect(copied).not.toContain("## Type");
+		expect(copied).not.toContain("Generated locally by AO");
 		expect(open).toHaveBeenCalledWith(
 			expect.stringContaining("https://github.com/AgentWrapper/agent-orchestrator/issues/new"),
 			"_blank",
@@ -350,7 +354,7 @@ describe("Sidebar", () => {
 		);
 	});
 
-	it("copies Discord with an official invite and keeps email draft copy-only when no support address exists", async () => {
+	it("opens Discord with an official invite and email with the support mailbox", async () => {
 		const user = userEvent.setup();
 		const writeText = vi.fn().mockResolvedValue(undefined);
 		const open = vi.spyOn(window, "open").mockReturnValue(null);
@@ -364,13 +368,18 @@ describe("Sidebar", () => {
 		await user.type(screen.getByLabelText("Summary"), "Need help with setup");
 
 		await user.click(screen.getByRole("button", { name: "Copy and open Discord" }));
-		await user.click(screen.getByRole("button", { name: "Copy email draft" }));
+		await user.click(screen.getByRole("button", { name: "Copy and open Email" }));
 
 		await waitFor(() => expect(writeText).toHaveBeenCalledTimes(2));
 		expect(writeText.mock.calls[0][0]).toContain("Daemon: unknown");
+		expect(writeText.mock.calls[1][0]).toContain("To: support@aoagents.dev");
 		expect(writeText.mock.calls[1][0]).toContain("AO feedback");
-		expect(open).toHaveBeenCalledOnce();
 		expect(open).toHaveBeenCalledWith("https://discord.com/invite/UZv7JjxbwG", "_blank", "noopener,noreferrer");
+		expect(open).toHaveBeenCalledWith(
+			expect.stringContaining("mailto:support@aoagents.dev"),
+			"_blank",
+			"noopener,noreferrer",
+		);
 	});
 
 	it("keeps the report form to summary and details while tailoring placeholder guidance", async () => {
@@ -382,27 +391,12 @@ describe("Sidebar", () => {
 		expect(screen.getByLabelText("Summary")).toHaveAttribute("placeholder", "Brief title");
 		expect(screen.getByLabelText("Details")).toHaveAttribute(
 			"placeholder",
-			"What happened, how to reproduce it, and what you expected.",
+			"Share what happened, what you want, or what you need help with.",
 		);
 		expect(screen.queryByLabelText("Expected behavior")).not.toBeInTheDocument();
-
-		await chooseOption(screen.getByRole("combobox", { name: "Report type" }), "Feature request");
-		expect(screen.getByLabelText("Summary")).toHaveAttribute("placeholder", "Brief title");
-		expect(screen.getByLabelText("Details")).toHaveAttribute(
-			"placeholder",
-			"The problem, use case, and requested behavior.",
-		);
-
-		await chooseOption(screen.getByRole("combobox", { name: "Report type" }), "General feedback");
-		expect(screen.getByLabelText("Summary")).toHaveAttribute("placeholder", "Brief title");
-		expect(screen.getByLabelText("Details")).toHaveAttribute("placeholder", "What should the AO team know?");
-
-		await chooseOption(screen.getByRole("combobox", { name: "Report type" }), "Setup question");
-		expect(screen.getByLabelText("Summary")).toHaveAttribute("placeholder", "Brief title");
-		expect(screen.getByLabelText("Details")).toHaveAttribute(
-			"placeholder",
-			"What you are trying to do, what you tried, and any error/output.",
-		);
+		expect(screen.queryByRole("combobox", { name: "Report type" })).not.toBeInTheDocument();
+		expect(screen.queryByLabelText("Include safe diagnostics")).not.toBeInTheDocument();
+		expect(screen.queryByLabelText("Report preview")).not.toBeInTheDocument();
 	});
 
 	it("renames a session inline and persists via the daemon", async () => {

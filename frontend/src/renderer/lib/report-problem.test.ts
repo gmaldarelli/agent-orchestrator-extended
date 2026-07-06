@@ -18,11 +18,9 @@ const diagnostics: ReportProblemDiagnostics = {
 };
 
 const completeInput: ReportProblemInput = {
-	type: "bug",
 	summary: "Terminal keeps reconnecting after daemon restart",
 	details:
 		"Open /Users/alice/work/secret-app and visit http://127.0.0.1:5173/?token=secret-token. The app should reconnect without losing the current route.",
-	includeDiagnostics: true,
 };
 
 describe("report problem drafts", () => {
@@ -48,11 +46,9 @@ describe("report problem drafts", () => {
 	it("redacts local paths, local URLs, and token-like values from drafts", () => {
 		const draft = formatReportProblemDraft(
 			{
-				type: "question",
 				summary: "Setup fails with OPENAI_API_KEY=sk-proj-secret and password=hunter2",
 				details:
 					"Repo is C:\\Users\\alice\\repo and file:///Users/alice/private/index.html?api_key=abc failed. Tell me what prerequisite is missing.",
-				includeDiagnostics: true,
 			},
 			{
 				...diagnostics,
@@ -72,49 +68,31 @@ describe("report problem drafts", () => {
 	});
 
 	it("produces a useful draft when user input is partial", () => {
-		const draft = formatReportProblemDraft(
-			{ type: "feedback", summary: "", details: "", includeDiagnostics: false },
-			diagnostics,
-			"email",
-		);
+		const draft = formatReportProblemDraft({ summary: "", details: "" }, diagnostics, "email");
 
-		expect(draft).toContain("Feedback");
+		expect(draft).toContain("AO feedback");
+		expect(draft).toContain("To: support@aoagents.dev");
 		expect(draft).toContain("Not provided");
-		expect(draft).toContain("No diagnostics included");
+		expect(draft).toContain("Safe diagnostics");
+		expect(draft).toContain("AO version: 1.2.3-test");
 	});
 
-	it("keeps generated drafts to summary and details for every report type", () => {
-		const featureDraft = formatReportProblemDraft(
-			{
-				type: "feature",
-				summary: "Make feedback reports easier to send",
-				details:
-					"Users want fewer generic bug-report questions for non-bug reports. Show fewer fields and clearer placeholder guidance.",
-				includeDiagnostics: false,
-			},
-			diagnostics,
-			"github",
-		);
-		expect(featureDraft).toContain("## Summary");
-		expect(featureDraft).toContain("## Details");
-		expect(featureDraft).not.toContain("## Expected");
-		expect(featureDraft).not.toContain("## Requested behavior");
+	it("omits report type and footer copy from generated drafts", () => {
+		const outputs: ReportProblemOutput[] = ["github", "discord", "email"];
 
-		const questionDraft = formatReportProblemDraft(
-			{
-				type: "question",
-				summary: "Need help setting up Claude Code",
-				details: "Trying to create my first project. I installed the CLI and checked PATH.",
-				includeDiagnostics: false,
-			},
-			diagnostics,
-			"email",
-		);
-		expect(questionDraft).toContain("Details:");
-		expect(questionDraft).not.toContain("What did you try?:");
+		for (const output of outputs) {
+			const draft = formatReportProblemDraft(completeInput, diagnostics, output);
+
+			expect(draft).toContain("Summary");
+			expect(draft).toContain("Details");
+			expect(draft).not.toContain("## Type");
+			expect(draft).not.toContain("Bug report");
+			expect(draft).not.toContain("Generated locally by AO");
+			expect(draft).not.toContain("No logs, repo contents");
+		}
 	});
 
-	it("builds copy handoff destinations for GitHub and Discord while leaving email copy-only", () => {
+	it("builds copy handoff destinations for GitHub, Discord, and support email", () => {
 		const github = new URL(reportProblemDestinationUrl(completeInput, diagnostics, "github")!);
 		expect(`${github.origin}${github.pathname}`).toBe("https://github.com/AgentWrapper/agent-orchestrator/issues/new");
 		expect(github.searchParams.get("title")).toBe("Terminal keeps reconnecting after daemon restart");
@@ -125,7 +103,12 @@ describe("report problem drafts", () => {
 			"https://discord.com/invite/UZv7JjxbwG",
 		);
 
-		expect(reportProblemDestinationUrl(completeInput, diagnostics, "email")).toBeNull();
+		const email = new URL(reportProblemDestinationUrl(completeInput, diagnostics, "email")!);
+		expect(email.protocol).toBe("mailto:");
+		expect(email.pathname).toBe("support@aoagents.dev");
+		expect(email.searchParams.get("subject")).toBe("AO feedback: Terminal keeps reconnecting after daemon restart");
+		expect(email.searchParams.get("body")).toContain("AO feedback");
+		expect(email.searchParams.get("body")).toContain("AO version: 1.2.3-test");
 	});
 
 	it("derives route surface from the hash-history route", async () => {
