@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/aoagents/agent-orchestrator/backend/internal/adapters"
@@ -152,6 +153,74 @@ func TestGetLaunchCommandWithPrompt(t *testing.T) {
 		t.Fatalf("unexpected command\nwant: %#v\n got: %#v", want, cmd)
 	}
 }
+
+func TestGetLaunchCommandBuildsCustomAgentForSystemPrompt(t *testing.T) {
+	p := &Plugin{resolvedBinary: "vibe"}
+	promptFile := filepath.Join(t.TempDir(), "system.md")
+	workspace := t.TempDir()
+	cmd, err := p.GetLaunchCommand(context.Background(), ports.LaunchConfig{
+		Permissions:      ports.PermissionModeAuto,
+		Prompt:           "add a health check",
+		SystemPrompt:     "follow AO rules",
+		SystemPromptFile: promptFile,
+		WorkspacePath:    workspace,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	addDir := filepath.Join(filepath.Dir(promptFile), "vibe")
+	want := []string{"vibe", "--trust", "--workdir", workspace, "--add-dir", addDir, "--agent", "ao-system-prompt", "--auto-approve", "--", "add a health check"}
+	if !reflect.DeepEqual(cmd, want) {
+		t.Fatalf("unexpected command\nwant: %#v\n got: %#v", want, cmd)
+	}
+	promptData, err := os.ReadFile(filepath.Join(addDir, ".vibe", "prompts", "ao-system-prompt.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(promptData) != "follow AO rules\n" {
+		t.Fatalf("prompt file = %q, want inline rules", promptData)
+	}
+	agentData, err := os.ReadFile(filepath.Join(addDir, ".vibe", "agents", "ao-system-prompt.toml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(agentData), `system_prompt_id = "ao-system-prompt"`) {
+		t.Fatalf("agent config missing prompt id:\n%s", agentData)
+	}
+}
+
+func TestGetLaunchCommandCustomAgentAcceptEdits(t *testing.T) {
+	p := &Plugin{resolvedBinary: "vibe"}
+	promptFile := filepath.Join(t.TempDir(), "system.md")
+	workspace := t.TempDir()
+	cmd, err := p.GetLaunchCommand(context.Background(), ports.LaunchConfig{
+		Permissions:      ports.PermissionModeAcceptEdits,
+		SystemPrompt:     "follow AO rules",
+		SystemPromptFile: promptFile,
+		WorkspacePath:    workspace,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	addDir := filepath.Join(filepath.Dir(promptFile), "vibe")
+	want := []string{"vibe", "--trust", "--workdir", workspace, "--add-dir", addDir, "--agent", "ao-system-prompt"}
+	if !reflect.DeepEqual(cmd, want) {
+		t.Fatalf("unexpected command\nwant: %#v\n got: %#v", want, cmd)
+	}
+	agentData, err := os.ReadFile(filepath.Join(addDir, ".vibe", "agents", "ao-system-prompt.toml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := string(agentData)
+	for _, wantText := range []string{`[tools.write_file]`, `[tools.search_replace]`, `permission = "always"`} {
+		if !strings.Contains(body, wantText) {
+			t.Fatalf("agent config missing %q:\n%s", wantText, body)
+		}
+	}
+}
+
 func TestGetLaunchCommandMapsPermissionModes(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -259,7 +328,8 @@ func TestGetRestoreCommandReappliesSystemPromptAgent(t *testing.T) {
 		t.Fatal("ok=false, want true")
 	}
 
-	want := []string{"vibe", "--trust", "--workdir", workspace, "--agent", "ao-system-prompt", "--auto-approve", "--resume", "abcd1234"}
+	addDir := filepath.Join(filepath.Dir(promptFile), "vibe")
+	want := []string{"vibe", "--trust", "--workdir", workspace, "--add-dir", addDir, "--agent", "ao-system-prompt", "--auto-approve", "--resume", "abcd1234"}
 	if !reflect.DeepEqual(cmd, want) {
 		t.Fatalf("cmd = %#v, want %#v", cmd, want)
 	}
