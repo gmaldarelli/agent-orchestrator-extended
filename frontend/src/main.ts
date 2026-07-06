@@ -50,6 +50,7 @@ import { createBrowserViewHost, type BrowserViewHost } from "./main/browser-view
 import { connectSupervisor, type SupervisorLinkHandle } from "./main/supervisor-link";
 import { shouldLinkOnAttach } from "./main/daemon-owner";
 import { readMigrationState, updateMigration, writeAppStateMarker, type MigrationState } from "./main/app-state";
+import { isAllowedAppExternalURL } from "./main/external-open";
 
 // Globals injected at compile time by @electron-forge/plugin-vite.
 declare const MAIN_WINDOW_VITE_DEV_SERVER_URL: string | undefined;
@@ -209,7 +210,7 @@ function createWindow(): void {
 	// navigate the privileged window away from the app origin. External links go to
 	// the OS browser. Keep this in place before exposing any daemon output to the renderer.
 	mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-		if (/^https?:\/\//.test(url)) {
+		if (isAllowedAppExternalURL(url)) {
 			void shell.openExternal(url);
 		}
 		return { action: "deny" };
