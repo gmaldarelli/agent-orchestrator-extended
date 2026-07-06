@@ -142,15 +142,15 @@ export function ReportProblemDialog({ open, onOpenChange }: ReportProblemDialogP
 					<div className="flex flex-wrap items-center justify-end gap-2 border-t border-border px-5 py-4">
 						<Button type="button" variant="secondary" onClick={() => void copyDraft("github")}>
 							<Clipboard className="size-3.5" aria-hidden="true" />
-							Copy and open GitHub
+							Raise GitHub issue
 						</Button>
 						<Button type="button" variant="secondary" onClick={() => void copyDraft("discord")}>
 							<Clipboard className="size-3.5" aria-hidden="true" />
-							Copy and open Discord
+							Report on Discord
 						</Button>
 						<Button type="button" onClick={() => void copyDraft("email")}>
 							<Clipboard className="size-3.5" aria-hidden="true" />
-							Copy and open Email
+							Email support
 						</Button>
 					</div>
 				</Dialog.Content>

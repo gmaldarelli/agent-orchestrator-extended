@@ -334,7 +334,7 @@ describe("Sidebar", () => {
 		expect(screen.queryByLabelText("Report preview")).not.toBeInTheDocument();
 		expect(screen.queryByLabelText("Expected behavior")).not.toBeInTheDocument();
 
-		await user.click(screen.getByRole("button", { name: "Copy and open GitHub" }));
+		await user.click(screen.getByRole("button", { name: "Raise GitHub issue" }));
 
 		await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
 		const copied = writeText.mock.calls[0][0] as string;
@@ -367,8 +367,8 @@ describe("Sidebar", () => {
 		expect(await screen.findByRole("dialog", { name: "Report a problem" })).toBeInTheDocument();
 		await user.type(screen.getByLabelText("Summary"), "Need help with setup");
 
-		await user.click(screen.getByRole("button", { name: "Copy and open Discord" }));
-		await user.click(screen.getByRole("button", { name: "Copy and open Email" }));
+		await user.click(screen.getByRole("button", { name: "Report on Discord" }));
+		await user.click(screen.getByRole("button", { name: "Email support" }));
 
 		await waitFor(() => expect(writeText).toHaveBeenCalledTimes(2));
 		expect(writeText.mock.calls[0][0]).toContain("Daemon: unknown");
