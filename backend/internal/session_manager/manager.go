@@ -1025,7 +1025,7 @@ func (m *Manager) RestoreAll(ctx context.Context) error {
 		// (#2319). A still-live session re-acquires it at the next quit.
 		if restoredWorkspaceProject {
 			for _, row := range projectRows {
-				if err := m.upsertWorkspaceProjectRowState(ctx, row, "active", ""); err != nil {
+				if err := m.upsertWorkspaceProjectRowState(ctx, row, "active"); err != nil {
 					m.logger.Warn("restore-all: marking workspace repo active failed", "sessionID", rec.ID, "repo", row.RepoName, "error", err)
 				}
 			}
@@ -1085,7 +1085,7 @@ func (m *Manager) restoreSessionWorkspace(ctx context.Context, project domain.Pr
 		return ports.WorkspaceInfo{}, err
 	}
 	for _, row := range rows {
-		if err := m.upsertWorkspaceProjectRowState(ctx, row, "active", ""); err != nil {
+		if err := m.upsertWorkspaceProjectRowState(ctx, row, "active"); err != nil {
 			return ports.WorkspaceInfo{}, fmt.Errorf("mark repo %s active: %w", row.RepoName, err)
 		}
 	}
@@ -1236,11 +1236,10 @@ func (m *Manager) destroyWorkspaceProjectRows(ctx context.Context, rows []ports.
 		}
 		info := workspaceInfoFromRepoInfo(rows[i])
 		if err := m.workspace.Destroy(ctx, info); err != nil {
-			preservedRef := ""
 			if errors.Is(err, ports.ErrWorkspaceDirty) {
 				return cleaned, err
 			}
-			if stateErr := m.upsertWorkspaceProjectRowState(ctx, rows[i], "retry_remove", preservedRef); stateErr != nil && firstErr == nil {
+			if stateErr := m.upsertWorkspaceProjectRowState(ctx, rows[i], "retry_remove"); stateErr != nil && firstErr == nil {
 				firstErr = stateErr
 			}
 			if firstErr == nil {
@@ -1248,7 +1247,7 @@ func (m *Manager) destroyWorkspaceProjectRows(ctx context.Context, rows []ports.
 			}
 			continue
 		}
-		if err := m.upsertWorkspaceProjectRowState(ctx, rows[i], "unavailable", ""); err != nil && firstErr == nil {
+		if err := m.upsertWorkspaceProjectRowState(ctx, rows[i], "unavailable"); err != nil && firstErr == nil {
 			firstErr = err
 		}
 		cleaned = true
@@ -1256,14 +1255,13 @@ func (m *Manager) destroyWorkspaceProjectRows(ctx context.Context, rows []ports.
 	return cleaned, firstErr
 }
 
-func (m *Manager) upsertWorkspaceProjectRowState(ctx context.Context, row ports.WorkspaceRepoInfo, state, preservedRef string) error {
+func (m *Manager) upsertWorkspaceProjectRowState(ctx context.Context, row ports.WorkspaceRepoInfo, state string) error {
 	return m.store.UpsertSessionWorktree(ctx, domain.SessionWorktreeRecord{
 		SessionID:    row.SessionID,
 		RepoName:     row.RepoName,
 		Branch:       row.Branch,
 		BaseSHA:      row.BaseSHA,
 		WorktreePath: row.Path,
-		PreservedRef: preservedRef,
 		State:        state,
 	})
 }
