@@ -4,16 +4,17 @@ import { useShell } from "../lib/shell-context";
 import { cn } from "../lib/utils";
 import aoLogo from "../assets/ao-logo.png";
 import { CreateProjectFlow } from "./CreateProjectFlow";
+import { TopbarButton } from "./TopbarButton";
 import { OrchestratorIcon } from "./icons";
 
 // The four board zones, in flow order — mirrors COLUMNS in SessionsBoard.tsx
 // (label + dot color + title tint) so the welcome legend pre-teaches exactly
 // what the user will see once the board has sessions.
 const FLOW_LEGEND = [
-	{ label: "Working", dot: "var(--orange)", titleClass: "text-working" },
-	{ label: "Needs you", dot: "var(--amber)", titleClass: "text-warning" },
-	{ label: "In review", dot: "var(--fg-muted)", titleClass: "text-muted-foreground" },
-	{ label: "Ready to merge", dot: "var(--green)", titleClass: "text-success" },
+	{ label: "Working", dot: "var(--color-working)", titleClass: "text-working" },
+	{ label: "Needs you", dot: "var(--color-warning)", titleClass: "text-warning" },
+	{ label: "In review", dot: "var(--color-text-muted)", titleClass: "text-muted-foreground" },
+	{ label: "Ready to merge", dot: "var(--color-success)", titleClass: "text-success" },
 ];
 
 // First-launch board state (no projects registered yet): replaces the four
@@ -23,17 +24,17 @@ export function BoardWelcome() {
 	const { createProject } = useShell();
 	return (
 		<div className="flex h-full min-h-0 items-center justify-center overflow-y-auto">
-			<div className="flex w-full max-w-[460px] flex-col items-center pb-[5vh] text-center">
-				<img src={aoLogo} alt="" aria-hidden="true" className="h-10 w-10 rounded-[10px] object-cover" />
-				<h2 className="mt-5 text-[17px] font-semibold tracking-[-0.015em] text-foreground">
+			<div className="flex w-full max-w-board-empty flex-col items-center pb-empty-offset-y text-center">
+				<img src={aoLogo} alt="" aria-hidden="true" className="size-10 rounded-lg object-cover" />
+				<h2 className="mt-5 text-heading-sm font-semibold tracking-tight-lg text-foreground">
 					Welcome to Agent Orchestrator
 				</h2>
-				<p className="mt-2 max-w-[400px] text-[12.5px] leading-[1.6] text-muted-foreground">
+				<p className="mt-2 max-w-preview-content text-md-sm leading-relaxed text-muted-foreground">
 					Add a git repository, describe the work, and AO coordinates agent sessions on isolated branches. This kanban
 					board tracks each session from work through review to merge.
 				</p>
 
-				<ol className="mt-7 w-full divide-y divide-border rounded-[13px] border border-border bg-surface text-left">
+				<ol className="mt-7 w-full divide-y divide-border rounded-panel border border-border bg-surface text-left">
 					<WelcomeStep n="01" title="Add a project">
 						Choose a local git repository and select the agents AO should use.
 					</WelcomeStep>
@@ -46,17 +47,17 @@ export function BoardWelcome() {
 							{FLOW_LEGEND.map((zone, index) => (
 								<Fragment key={zone.label}>
 									{index > 0 && (
-										<span aria-hidden="true" className="text-[10px] text-passive">
+										<span aria-hidden="true" className="text-micro text-passive">
 											→
 										</span>
 									)}
 									<span
 										className={cn(
-											"inline-flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.08em]",
+											"inline-flex items-center gap-1.5 text-micro font-semibold uppercase tracking-wide-md",
 											zone.titleClass,
 										)}
 									>
-										<span className="h-[7px] w-[7px] rounded-full" style={{ background: zone.dot }} />
+										<span className="size-dot-sm rounded-full" style={{ background: zone.dot }} />
 										{zone.label}
 									</span>
 								</Fragment>
@@ -68,21 +69,21 @@ export function BoardWelcome() {
 				<CreateProjectFlow idleLabel="Add your first project" onCreateProject={createProject}>
 					{({ choosePath, disabled, error, label }) => (
 						<>
-							<button
+							<TopbarButton
 								aria-label="Add your first project"
-								className="dashboard-app-header__primary-btn mt-7"
+								className="mt-7"
 								disabled={disabled}
 								onClick={choosePath}
-								type="button"
+								variant="primary"
 							>
-								<Plus className="h-3.5 w-3.5" aria-hidden="true" />
+								<Plus className="size-icon-md" aria-hidden="true" />
 								{label}
-							</button>
-							{error && <p className="mt-3 text-[11px] leading-[1.5] text-error">{error}</p>}
+							</TopbarButton>
+							{error && <p className="mt-3 text-caption leading-body text-error">{error}</p>}
 						</>
 					)}
 				</CreateProjectFlow>
-				<p className="mt-3 text-[11px] text-passive">
+				<p className="mt-3 text-caption text-passive">
 					Adding a project starts its orchestrator — the agent you talk to.
 				</p>
 			</div>
@@ -92,11 +93,11 @@ export function BoardWelcome() {
 
 function WelcomeStep({ n, title, children }: { n: string; title: string; children: ReactNode }) {
 	return (
-		<li className="flex gap-3.5 px-4 py-3.5">
-			<span className="pt-px font-mono text-[10.5px] font-medium leading-[1.7] text-passive">{n}</span>
+		<li className="flex gap-4 px-4 py-4">
+			<span className="pt-px font-mono text-2xs font-medium leading-loose text-passive">{n}</span>
 			<span className="min-w-0 flex-1">
-				<span className="block text-[13px] font-medium text-foreground">{title}</span>
-				<span className="mt-1 block text-[12px] leading-[1.55] text-muted-foreground">{children}</span>
+				<span className="block text-control font-medium text-foreground">{title}</span>
+				<span className="mt-1 block text-xs leading-body-md text-muted-foreground">{children}</span>
 			</span>
 		</li>
 	);
@@ -122,21 +123,20 @@ export function ProjectBoardEmpty({
 }) {
 	return (
 		<div className="flex h-full min-h-0 items-center justify-center overflow-y-auto">
-			<div className="flex w-full max-w-[400px] flex-col items-center pb-[5vh] text-center">
-				<h2 className="text-[15px] font-semibold tracking-[-0.01em] text-foreground">No worker sessions yet</h2>
-				<p className="mt-2 text-[12.5px] leading-[1.6] text-muted-foreground">
+			<div className="flex w-full max-w-preview-content flex-col items-center pb-empty-offset-y text-center">
+				<h2 className="text-subtitle font-semibold tracking-tight text-foreground">No worker sessions yet</h2>
+				<p className="mt-2 text-md-sm leading-relaxed text-muted-foreground">
 					Describe a task and the orchestrator plans it, spawns worker sessions, and tracks them here from work to
 					merge.
 				</p>
 				<div className="mt-5 flex items-center gap-2">
-					<button
+					<TopbarButton
 						aria-label={hasOrchestrator ? "Orchestrator" : "Spawn Orchestrator"}
-						className="dashboard-app-header__primary-btn"
 						disabled={isSpawning || isProjectRestarting}
 						onClick={onOpenOrchestrator}
-						type="button"
+						variant="primary"
 					>
-						<OrchestratorIcon className="h-3.5 w-3.5" aria-hidden="true" />
+						<OrchestratorIcon className="size-icon-md" aria-hidden="true" />
 						{isProjectRestarting
 							? "Restarting..."
 							: isSpawning
@@ -144,20 +144,19 @@ export function ProjectBoardEmpty({
 								: hasOrchestrator
 									? "Orchestrator"
 									: "Spawn Orchestrator"}
-					</button>
-					<button
+					</TopbarButton>
+					<TopbarButton
 						aria-label="New task"
-						className="dashboard-app-header__accent-btn"
 						disabled={isProjectRestarting}
 						onClick={onNewTask}
-						type="button"
+						variant="accent"
 					>
-						<Plus className="h-3.5 w-3.5" aria-hidden="true" />
+						<Plus className="size-icon-md" aria-hidden="true" />
 						New task
-					</button>
+					</TopbarButton>
 				</div>
 				{spawnError && (
-					<p className="mt-3 text-[11px] leading-[1.5] text-error" role="status">
+					<p className="mt-3 text-caption leading-body text-error" role="status">
 						{spawnError}
 					</p>
 				)}

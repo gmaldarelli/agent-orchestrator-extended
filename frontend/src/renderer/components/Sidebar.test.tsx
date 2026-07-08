@@ -475,6 +475,6 @@ describe("Sidebar", () => {
 
 		if (!projectRow) throw new Error("Project row button not found");
 		// Padding is always reserved for the action cluster (not hover-gated)
-		expect(projectRow).toHaveClass("pr-[84px]");
+		expect(projectRow).toHaveClass("pr-sidebar-project-actions");
 	});
 });

@@ -29,6 +29,7 @@ import { WebLinksAddon } from "@xterm/addon-web-links";
 import { WebglAddon } from "@xterm/addon-webgl";
 import type { AttachableTerminal, TerminalUserInputSource } from "../hooks/useTerminalSession";
 import { aoBridge } from "../lib/bridge";
+import { TERMINAL_FONT_SIZE_DEFAULT } from "../lib/design-tokens";
 import { buildTerminalThemes } from "../lib/terminal-themes";
 import type { Theme } from "../stores/ui-store";
 
@@ -72,9 +73,7 @@ function loadRenderer(term: Terminal): void {
 	}
 }
 
-// xterm palette tracks the app theme (see lib/terminal-themes.ts + --term-* in
-// styles.css). The PTY content is still the agent's own ANSI output.
-const terminalThemes = buildTerminalThemes();
+// xterm palette tracks the app theme (see lib/terminal-themes.ts + tokens.css).
 const SUPPRESS_NATIVE_PASTE_MS = 100;
 
 // Erase scrollback (3J) + display (2J) and home the cursor. Deliberately NOT
@@ -219,7 +218,8 @@ export function XtermTerminal(props: XtermTerminalProps) {
 	useEffect(() => {
 		const term = termRef.current;
 		if (!term) return;
-		term.options.theme = props.theme === "dark" ? terminalThemes.dark : terminalThemes.light;
+		const { dark, light } = buildTerminalThemes();
+		term.options.theme = props.theme === "dark" ? dark : light;
 	}, [props.theme]);
 
 	useEffect(() => {
@@ -237,6 +237,7 @@ export function XtermTerminal(props: XtermTerminalProps) {
 
 		let term: Terminal;
 		try {
+			const { dark, light } = buildTerminalThemes();
 			term = new Terminal({
 				// Required for the Unicode 11 width addon below.
 				allowProposedApi: true,
@@ -249,7 +250,7 @@ export function XtermTerminal(props: XtermTerminalProps) {
 				fontFamily:
 					getComputedStyle(host).getPropertyValue("--font-mono").trim() ||
 					'ui-monospace, Menlo, Monaco, "Courier New", monospace',
-				fontSize: props.fontSize ?? 12,
+				fontSize: props.fontSize ?? TERMINAL_FONT_SIZE_DEFAULT,
 				lineHeight: 1.35,
 				// Agent TUIs leave SGR bold active while using ANSI black for
 				// separators; keep bold weight-only so black stays black.
@@ -265,7 +266,7 @@ export function XtermTerminal(props: XtermTerminalProps) {
 				// stops FitAddon reserving ~14px on the right for a scrollbar that can
 				// never appear.
 				scrollback: 0,
-				theme: props.theme === "dark" ? terminalThemes.dark : terminalThemes.light,
+				theme: props.theme === "dark" ? dark : light,
 			});
 		} catch (error) {
 			callbacksRef.current.onError?.(error);
@@ -497,7 +498,7 @@ export function XtermTerminal(props: XtermTerminalProps) {
 			} else if (event.deltaMode === 2 /* DOM_DELTA_PAGE */) {
 				lines = (Math.trunc(event.deltaY) || Math.sign(event.deltaY)) * term.rows;
 			} else {
-				const rowHeight = (term.options.fontSize ?? 12) * (term.options.lineHeight ?? 1);
+				const rowHeight = (term.options.fontSize ?? TERMINAL_FONT_SIZE_DEFAULT) * (term.options.lineHeight ?? 1);
 				wheelAccumPx += event.deltaY;
 				lines = Math.trunc(wheelAccumPx / rowHeight);
 				wheelAccumPx -= lines * rowHeight;
