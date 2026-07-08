@@ -137,17 +137,19 @@ func (f fakeProjects) GetProject(_ context.Context, id string) (domain.ProjectRe
 }
 
 type fakeLauncher struct {
-	handle     string
-	alive      bool
-	spawnErr   error
-	notifyErr  error
-	spawned    bool
-	spawnCount int
-	notified   bool
-	gotSpec    LaunchSpec
-	gotHandle  string
-	specs      []LaunchSpec
-	handles    []string
+	handle          string
+	alive           bool
+	spawnErr        error
+	notifyErr       error
+	spawned         bool
+	spawnCount      int
+	notified        bool
+	cancelled       bool
+	gotSpec         LaunchSpec
+	gotHandle       string
+	cancelledHandle string
+	specs           []LaunchSpec
+	handles         []string
 }
 
 func (f *fakeLauncher) Spawn(_ context.Context, spec LaunchSpec) (string, error) {
@@ -170,6 +172,11 @@ func (f *fakeLauncher) Notify(_ context.Context, handleID string, spec LaunchSpe
 }
 func (f *fakeLauncher) Alive(_ context.Context, _ string) (bool, error) {
 	return f.alive || f.spawned, nil
+}
+func (f *fakeLauncher) Cancel(_ context.Context, handleID string) error {
+	f.cancelled = true
+	f.cancelledHandle = handleID
+	return nil
 }
 
 func liveWorker() domain.SessionRecord {
@@ -219,6 +226,39 @@ func TestTriggerSpawnsNewReviewerAndRecordsRunAfterLaunch(t *testing.T) {
 	}
 	if len(store.runs) != 1 || store.review == nil || store.review.ReviewerHandleID != "review-mer-1" {
 		t.Fatalf("persisted review=%+v runs=%+v", store.review, store.runs)
+	}
+}
+
+func TestCancelStopsReviewerAndFailsRunningRuns(t *testing.T) {
+	store := &fakeStore{
+		review: &domain.Review{ID: "rev-1", SessionID: "mer-1", ReviewerHandleID: "review-mer-1"},
+		runs: []domain.ReviewRun{
+			{ID: "run-1", ReviewID: "rev-1", SessionID: "mer-1", PRURL: "https://github.com/o/r/pull/1", TargetSHA: "sha1", Status: domain.ReviewRunRunning},
+			{ID: "run-2", ReviewID: "rev-1", SessionID: "mer-1", PRURL: "https://github.com/o/r/pull/2", TargetSHA: "sha2", Status: domain.ReviewRunComplete, Verdict: domain.VerdictApproved},
+		},
+	}
+	launcher := &fakeLauncher{}
+	prs := fakePRs{prs: []domain.PullRequest{
+		{URL: "https://github.com/o/r/pull/1", Number: 1, HeadSHA: "sha1"},
+		{URL: "https://github.com/o/r/pull/2", Number: 2, HeadSHA: "sha2"},
+	}}
+	eng := newEngineForTest(store, fakeSessions{rec: liveWorker(), ok: true}, prs, fakeProjects{}, launcher)
+
+	res, err := eng.Cancel(context.Background(), "mer-1")
+	if err != nil {
+		t.Fatalf("Cancel: %v", err)
+	}
+	if !launcher.cancelled || launcher.cancelledHandle != "review-mer-1" {
+		t.Fatalf("launcher cancel = %v handle=%q", launcher.cancelled, launcher.cancelledHandle)
+	}
+	if len(res.CancelledRuns) != 1 || res.CancelledRuns[0].ID != "run-1" {
+		t.Fatalf("cancelled runs = %+v", res.CancelledRuns)
+	}
+	if store.runs[0].Status != domain.ReviewRunFailed || !strings.Contains(store.runs[0].Body, "cancelled") {
+		t.Fatalf("run not marked cancelled: %+v", store.runs[0])
+	}
+	if res.Reviews[0].Status == ReviewStateRunning {
+		t.Fatalf("review state still running: %+v", res.Reviews[0])
 	}
 }
 

@@ -147,6 +147,13 @@ type SessionReviews struct {
 	Reviews          []PRReviewState
 }
 
+// CancelResult is the review state after a reviewer pane cancellation.
+type CancelResult struct {
+	ReviewerHandleID string
+	Reviews          []PRReviewState
+	CancelledRuns    []domain.ReviewRun
+}
+
 // Trigger starts reviews for every PR on the worker session that needs review.
 // It reuses running/up-to-date runs, retries failed/current changes-requested
 // heads, and uses one reviewer pane for every new run in the batch.
@@ -372,6 +379,52 @@ func (e *Engine) List(ctx stdctx.Context, workerID domain.SessionID) (SessionRev
 		return SessionReviews{}, err
 	}
 	return SessionReviews{ReviewerHandleID: handle, Runs: runs, Reviews: Plan(prs, runs)}, nil
+}
+
+// Cancel stops the live reviewer pane for a worker and marks running review runs
+// as failed so they no longer block a fresh trigger.
+func (e *Engine) Cancel(ctx stdctx.Context, workerID domain.SessionID) (CancelResult, error) {
+	if workerID == "" {
+		return CancelResult{}, fmt.Errorf("%w: worker session id is required", ErrInvalid)
+	}
+	review, ok, err := e.store.GetReviewBySession(ctx, workerID)
+	if err != nil {
+		return CancelResult{}, err
+	}
+	if !ok || review.ReviewerHandleID == "" {
+		return CancelResult{}, fmt.Errorf("%w: reviewer for worker session %q", ErrNotFound, workerID)
+	}
+	if err := e.launcher.Cancel(ctx, review.ReviewerHandleID); err != nil {
+		return CancelResult{}, err
+	}
+	runs, err := e.store.ListReviewRunsBySession(ctx, workerID)
+	if err != nil {
+		return CancelResult{}, err
+	}
+	cancelled := make([]domain.ReviewRun, 0)
+	for _, run := range runs {
+		if run.Status != domain.ReviewRunRunning {
+			continue
+		}
+		if ok, err := e.store.UpdateReviewRunResult(ctx, run.ID, domain.ReviewRunFailed, domain.VerdictNone, "cancelled by user", ""); err != nil {
+			return CancelResult{}, err
+		} else if ok {
+			run.Status = domain.ReviewRunFailed
+			run.Verdict = domain.VerdictNone
+			run.Body = "cancelled by user"
+			run.GithubReviewID = ""
+			cancelled = append(cancelled, run)
+		}
+	}
+	prs, err := e.prs.ListPRsBySession(ctx, workerID)
+	if err != nil {
+		return CancelResult{}, err
+	}
+	runs, err = e.store.ListReviewRunsBySession(ctx, workerID)
+	if err != nil {
+		return CancelResult{}, err
+	}
+	return CancelResult{ReviewerHandleID: review.ReviewerHandleID, Reviews: Plan(prs, runs), CancelledRuns: cancelled}, nil
 }
 
 // reviewerHarness resolves which harness reviews the worker's PR: a configured

@@ -501,6 +501,19 @@ function ReviewsView({
 			}
 		},
 	});
+	const cancelReview = useMutation({
+		mutationFn: async () => {
+			const { error } = await apiClient.POST("/api/v1/sessions/{sessionId}/reviews/cancel", {
+				params: { path: { sessionId: session.id } },
+			});
+			if (error) throw new Error(apiErrorMessage(error, "Unable to cancel review"));
+		},
+		onSuccess: () => {
+			setReviewNotice(null);
+			void queryClient.invalidateQueries({ queryKey: ["session-reviews", session.id] });
+			void queryClient.invalidateQueries({ queryKey: workspaceQueryKey });
+		},
+	});
 	const reviewStates = reviewsQuery.data?.reviews ?? [];
 
 	return (
@@ -508,10 +521,12 @@ function ReviewsView({
 			<Section title="Reviews">
 				<ReviewPanel
 					config={projectConfigQuery.data}
-					error={reviewsQuery.error ?? triggerReview.error}
+					error={reviewsQuery.error ?? triggerReview.error ?? cancelReview.error}
 					isLoading={reviewsQuery.isLoading}
+					isCancelling={cancelReview.isPending}
 					isTriggering={triggerReview.isPending}
 					onOpenTerminal={onOpenReviewerTerminal}
+					onCancel={() => cancelReview.mutate()}
 					onTrigger={() => triggerReview.mutate()}
 					reviewerHandleId={reviewsQuery.data?.reviewerHandleId ?? ""}
 					reviewStates={reviewStates}
@@ -605,9 +620,11 @@ function ReviewPanel({
 	reviewerHandleId,
 	isLoading,
 	isTriggering,
+	isCancelling,
 	error,
 	notice,
 	onTrigger,
+	onCancel,
 	onOpenTerminal,
 }: {
 	session: WorkspaceSession;
@@ -616,9 +633,11 @@ function ReviewPanel({
 	reviewerHandleId: string;
 	isLoading: boolean;
 	isTriggering: boolean;
+	isCancelling: boolean;
 	error: unknown;
 	notice: string | null;
 	onTrigger: () => void;
+	onCancel: () => void;
 	onOpenTerminal?: OpenReviewerTerminal;
 }) {
 	if (sortedPRs(session).length === 0) {
@@ -689,12 +708,12 @@ function ReviewPanel({
 				<div className="grid grid-cols-2 gap-2.5 pt-1 has-[:only-child]:grid-cols-1 @max-[300px]/inspector:grid-cols-1">
 					<button
 						className="inline-flex h-control-xl min-w-0 items-center justify-center gap-2 overflow-hidden truncate rounded-md border border-success/42 bg-success/10 px-2.5 text-xs font-semibold text-success-bright transition-[background,border-color,color] duration-fast hover:bg-interactive-hover hover:text-foreground disabled:cursor-not-allowed disabled:opacity-45 [&_svg]:size-icon-md [&_svg]:shrink-0"
-						disabled={reviewRunning ? !terminalEnabled : runDisabled}
-						onClick={reviewRunning ? openReviewerTerminal : onTrigger}
+						disabled={reviewRunning ? isCancelling : runDisabled}
+						onClick={reviewRunning ? onCancel : onTrigger}
 						type="button"
 					>
 						{reviewRunning ? <Terminal aria-hidden="true" /> : <Play aria-hidden="true" />}
-						{reviewRunning ? "Cancel review" : runAction}
+						{reviewRunning ? (isCancelling ? "Cancelling..." : "Cancel review") : runAction}
 					</button>
 					<button
 						className="inline-flex h-control-xl min-w-0 items-center justify-center gap-2 overflow-hidden truncate rounded-md border border-border bg-raised px-2.5 text-xs font-semibold text-muted-foreground transition-[background,border-color,color] duration-fast hover:bg-interactive-hover hover:text-foreground disabled:cursor-not-allowed disabled:opacity-45 [&_svg]:size-icon-md [&_svg]:shrink-0"
