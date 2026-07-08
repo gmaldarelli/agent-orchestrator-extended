@@ -225,8 +225,7 @@ function NotificationItem({
 }
 
 type IconSpec =
-	| { type: "dot"; color: string }
-	| { type: "component"; Component: React.ComponentType<React.SVGProps<SVGSVGElement>> };
+	{ type: "dot"; color: string } | { type: "component"; Component: React.ComponentType<React.SVGProps<SVGSVGElement>> };
 
 function notificationIcon(type: string): IconSpec {
 	switch (type) {
