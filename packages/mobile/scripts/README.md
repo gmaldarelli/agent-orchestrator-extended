@@ -7,7 +7,7 @@ auth, so it never exposes itself to the network. That means a **physical phone**
 `ao-phone-proxy.js` is a tiny bridge that fixes this **without weakening the
 daemon**: it opens **one** LAN port, forwards it to the loopback daemon, and uses
 **trust-on-first-connect** - the first device that connects is pinned as the
-*only* allowed device; every other machine on the Wi-Fi is refused.
+_only_ allowed device; every other machine on the Wi-Fi is refused.
 
 ## Run it
 
@@ -32,7 +32,7 @@ AO phone bridge: 0.0.0.0:3011 -> 127.0.0.1:3001  | waiting for first device (tru
    - **API Port:** `3011`
    - **Use TLS:** off
 4. Open the app. The bridge logs `[paired] <phone-ip> is now the only allowed
-   device` - the phone is now the single trusted device. Done.
+device` - the phone is now the single trusted device. Done.
 
 ## Re-pair a different phone
 
@@ -44,12 +44,12 @@ Then connect the new phone (it becomes the pinned device).
 
 ## Options
 
-| Env      | Default                    | Meaning                                  |
-| -------- | -------------------------- | ---------------------------------------- |
-| `PORT`   | `3011`                     | LAN port to expose to the phone          |
-| `TARGET` | `3001`                     | Loopback daemon port to forward to       |
-| `STATE`  | `~/.ao/phone-allow.json`   | Where the paired-device IP is remembered |
-| `RESET`  | -                          | `RESET=1` clears the pairing, then pairs the next device |
+| Env      | Default                  | Meaning                                                  |
+| -------- | ------------------------ | -------------------------------------------------------- |
+| `PORT`   | `3011`                   | LAN port to expose to the phone                          |
+| `TARGET` | `3001`                   | Loopback daemon port to forward to                       |
+| `STATE`  | `~/.ao/phone-allow.json` | Where the paired-device IP is remembered                 |
+| `RESET`  | -                        | `RESET=1` clears the pairing, then pairs the next device |
 
 ## Notes
 
@@ -58,7 +58,7 @@ Then connect the new phone (it becomes the pinned device).
 - **DHCP drift:** if the phone's IP changes, its new IP won't match the pin and
   it'll be blocked - `RESET=1` and reconnect, or set a **DHCP reservation** for
   the phone in your router so its IP is fixed.
-- **Trust model:** whoever connects *first* is trusted, and IP allowlisting is a
+- **Trust model:** whoever connects _first_ is trusted, and IP allowlisting is a
   lightweight LAN control (a hostile device on the same Wi-Fi could spoof the
   paired IP). Fine for a trusted home network; for shared/untrusted Wi-Fi use
   Tailscale or real auth instead.

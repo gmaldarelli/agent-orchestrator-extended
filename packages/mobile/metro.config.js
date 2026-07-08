@@ -20,10 +20,7 @@ const localModules = path.resolve(projectRoot, "node_modules");
 const config = getDefaultConfig(projectRoot);
 
 config.watchFolders = [workspaceRoot];
-config.resolver.nodeModulesPaths = [
-	localModules,
-	path.resolve(workspaceRoot, "node_modules"),
-];
+config.resolver.nodeModulesPaths = [localModules, path.resolve(workspaceRoot, "node_modules")];
 
 const pinned = config.resolver.resolveRequest;
 config.resolver.resolveRequest = (context, moduleName, platform) => {

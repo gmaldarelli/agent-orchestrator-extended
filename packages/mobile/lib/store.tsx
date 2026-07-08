@@ -113,10 +113,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 			return;
 		}
 		try {
-			const [projs, sess] = await Promise.all([
-				getProjects(c).catch(() => [] as ProjectInfo[]),
-				getSessions(c, "all"),
-			]);
+			const [projs, sess] = await Promise.all([getProjects(c).catch(() => [] as ProjectInfo[]), getSessions(c, "all")]);
 			setProjects(projs);
 			setSessions(sess.sessions);
 			setOrchestrators(sess.orchestrators);

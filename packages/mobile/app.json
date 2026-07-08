@@ -27,10 +27,7 @@
 			"predictiveBackGestureEnabled": false
 		},
 		"web": { "favicon": "./assets/favicon.png", "bundler": "metro" },
-		"plugins": [
-			"expo-router",
-			["expo-build-properties", { "android": { "usesCleartextTraffic": true } }]
-		],
+		"plugins": ["expo-router", ["expo-build-properties", { "android": { "usesCleartextTraffic": true } }]],
 		"extra": { "router": {} }
 	}
 }

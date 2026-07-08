@@ -33,53 +33,53 @@ const STATE = process.env.STATE || path.join(os.homedir(), ".ao", "phone-allow.j
 const norm = (ip) => (ip || "").replace(/^::ffff:/, "");
 
 if (process.env.RESET === "1") {
-  try {
-    fs.unlinkSync(STATE);
-    console.log(`pairing reset (removed ${STATE})`);
-  } catch {
-    /* nothing to reset */
-  }
+	try {
+		fs.unlinkSync(STATE);
+		console.log(`pairing reset (removed ${STATE})`);
+	} catch {
+		/* nothing to reset */
+	}
 }
 
 let pinned = null;
 try {
-  pinned = JSON.parse(fs.readFileSync(STATE, "utf8")).ip || null;
+	pinned = JSON.parse(fs.readFileSync(STATE, "utf8")).ip || null;
 } catch {
-  /* not paired yet */
+	/* not paired yet */
 }
 
 function pair(ip) {
-  pinned = ip;
-  try {
-    fs.mkdirSync(path.dirname(STATE), { recursive: true });
-    fs.writeFileSync(STATE, JSON.stringify({ ip, pairedAt: new Date().toISOString() }, null, 2));
-  } catch (e) {
-    console.log("warn: could not persist pairing:", e.message);
-  }
-  console.log(`[paired] ${ip} is now the only allowed device (RESET=1 to re-pair)`);
+	pinned = ip;
+	try {
+		fs.mkdirSync(path.dirname(STATE), { recursive: true });
+		fs.writeFileSync(STATE, JSON.stringify({ ip, pairedAt: new Date().toISOString() }, null, 2));
+	} catch (e) {
+		console.log("warn: could not persist pairing:", e.message);
+	}
+	console.log(`[paired] ${ip} is now the only allowed device (RESET=1 to re-pair)`);
 }
 
 const server = net.createServer((client) => {
-  const ip = norm(client.remoteAddress);
+	const ip = norm(client.remoteAddress);
 
-  if (!pinned) {
-    pair(ip); // first device wins
-  } else if (ip !== pinned) {
-    console.log(`[BLOCK]  ${ip} (paired device is ${pinned})`);
-    client.destroy();
-    return;
-  }
+	if (!pinned) {
+		pair(ip); // first device wins
+	} else if (ip !== pinned) {
+		console.log(`[BLOCK]  ${ip} (paired device is ${pinned})`);
+		client.destroy();
+		return;
+	}
 
-  const upstream = net.connect(TARGET, "127.0.0.1");
-  client.pipe(upstream);
-  upstream.pipe(client);
-  client.on("error", () => upstream.destroy());
-  upstream.on("error", () => client.destroy());
+	const upstream = net.connect(TARGET, "127.0.0.1");
+	client.pipe(upstream);
+	upstream.pipe(client);
+	client.on("error", () => upstream.destroy());
+	upstream.on("error", () => client.destroy());
 });
 
 server.listen(PORT, "0.0.0.0", () => {
-  console.log(
-    `AO phone bridge: 0.0.0.0:${PORT} -> 127.0.0.1:${TARGET}  | ` +
-      (pinned ? `paired to ${pinned}` : "waiting for first device (trust-on-first-connect)"),
-  );
+	console.log(
+		`AO phone bridge: 0.0.0.0:${PORT} -> 127.0.0.1:${TARGET}  | ` +
+			(pinned ? `paired to ${pinned}` : "waiting for first device (trust-on-first-connect)"),
+	);
 });

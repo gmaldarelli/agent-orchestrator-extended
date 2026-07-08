@@ -738,16 +738,10 @@ export default function TerminalScreen() {
 					</Pressable>
 				))}
 				{/* Zoom the terminal font: smaller = more rows/cols (see more of a TUI). */}
-				<Pressable
-					style={({ pressed }) => [styles.key, pressed && styles.keyPressed]}
-					onPress={() => zoom(-1)}
-				>
+				<Pressable style={({ pressed }) => [styles.key, pressed && styles.keyPressed]} onPress={() => zoom(-1)}>
 					<Feather name="zoom-out" size={15} color={theme.textPrimary} />
 				</Pressable>
-				<Pressable
-					style={({ pressed }) => [styles.key, pressed && styles.keyPressed]}
-					onPress={() => zoom(1)}
-				>
+				<Pressable style={({ pressed }) => [styles.key, pressed && styles.keyPressed]} onPress={() => zoom(1)}>
 					<Feather name="zoom-in" size={15} color={theme.textPrimary} />
 				</Pressable>
 				{/* Compose a high-level message to the agent. */}
