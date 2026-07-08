@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, type ReactNode } from "react";
-import { ArrowUpRight, GitPullRequest, Play, Shield, Terminal } from "lucide-react";
+import { ArrowUpRight, GitPullRequest, Play, Shield, Terminal, X } from "lucide-react";
 import type { components } from "../../api/schema";
 import { apiClient, apiErrorMessage } from "../lib/api-client";
 import { workspaceQueryKey } from "../hooks/useWorkspaceQuery";
@@ -707,12 +707,17 @@ function ReviewPanel({
 				</div>
 				<div className="grid grid-cols-2 gap-2.5 pt-1 has-[:only-child]:grid-cols-1 @max-[300px]/inspector:grid-cols-1">
 					<button
-						className="inline-flex h-control-xl min-w-0 items-center justify-center gap-2 overflow-hidden truncate rounded-md border border-success/42 bg-success/10 px-2.5 text-xs font-semibold text-success-bright transition-[background,border-color,color] duration-fast hover:bg-interactive-hover hover:text-foreground disabled:cursor-not-allowed disabled:opacity-45 [&_svg]:size-icon-md [&_svg]:shrink-0"
+						className={cn(
+							"inline-flex h-control-xl min-w-0 items-center justify-center gap-2 overflow-hidden truncate rounded-md border px-2.5 text-xs font-semibold transition-[background,border-color,color] duration-fast hover:bg-interactive-hover hover:text-foreground disabled:cursor-not-allowed disabled:opacity-45 [&_svg]:size-icon-md [&_svg]:shrink-0",
+							reviewRunning
+								? "border-error/42 bg-error/10 text-error"
+								: "border-success/42 bg-success/10 text-success-bright",
+						)}
 						disabled={reviewRunning ? isCancelling : runDisabled}
 						onClick={reviewRunning ? onCancel : onTrigger}
 						type="button"
 					>
-						{reviewRunning ? <Terminal aria-hidden="true" /> : <Play aria-hidden="true" />}
+						{reviewRunning ? <X aria-hidden="true" /> : <Play aria-hidden="true" />}
 						{reviewRunning ? (isCancelling ? "Cancelling..." : "Cancel review") : runAction}
 					</button>
 					<button
@@ -772,6 +777,9 @@ function sessionReviewVerdict(reviewStates: PRReviewState[]): {
 	if (reviewStates.some((reviewState) => reviewState.latestRun?.status === "failed")) {
 		return { label: "Failed", tone: "danger" };
 	}
+	if (reviewStates.some((reviewState) => reviewState.latestRun?.status === "cancelled")) {
+		return { label: "Cancelled", tone: "neutral" };
+	}
 	if (reviewStates.some((reviewState) => reviewState.status === "changes_requested")) {
 		return { label: "Changes requested", tone: "danger" };
 	}
@@ -788,6 +796,9 @@ function reviewVerdict(reviewState: PRReviewState): {
 } {
 	if (reviewState.latestRun?.status === "failed") {
 		return { label: "Failed", tone: "danger" };
+	}
+	if (reviewState.latestRun?.status === "cancelled") {
+		return { label: "Cancelled", tone: "neutral" };
 	}
 	switch (reviewState.status) {
 		case "running":

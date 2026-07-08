@@ -49,6 +49,7 @@ func (f *fakeStore) InsertReviewRun(_ context.Context, r domain.ReviewRun) error
 			existing.TargetSHA == r.TargetSHA &&
 			existing.TargetSHA != "" &&
 			existing.Status != domain.ReviewRunFailed &&
+			existing.Status != domain.ReviewRunCancelled &&
 			existing.Verdict != domain.VerdictChangesRequested {
 			return domain.ErrDuplicateReviewRun
 		}
@@ -229,7 +230,7 @@ func TestTriggerSpawnsNewReviewerAndRecordsRunAfterLaunch(t *testing.T) {
 	}
 }
 
-func TestCancelStopsReviewerAndFailsRunningRuns(t *testing.T) {
+func TestCancelInterruptsReviewerAndCancelsRunningRuns(t *testing.T) {
 	store := &fakeStore{
 		review: &domain.Review{ID: "rev-1", SessionID: "mer-1", ReviewerHandleID: "review-mer-1"},
 		runs: []domain.ReviewRun{
@@ -254,7 +255,7 @@ func TestCancelStopsReviewerAndFailsRunningRuns(t *testing.T) {
 	if len(res.CancelledRuns) != 1 || res.CancelledRuns[0].ID != "run-1" {
 		t.Fatalf("cancelled runs = %+v", res.CancelledRuns)
 	}
-	if store.runs[0].Status != domain.ReviewRunFailed || !strings.Contains(store.runs[0].Body, "cancelled") {
+	if store.runs[0].Status != domain.ReviewRunCancelled || !strings.Contains(store.runs[0].Body, "cancelled") {
 		t.Fatalf("run not marked cancelled: %+v", store.runs[0])
 	}
 	if res.Reviews[0].Status == ReviewStateRunning {

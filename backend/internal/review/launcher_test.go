@@ -57,7 +57,7 @@ func (f *fakeRuntime) Create(_ context.Context, cfg ports.RuntimeConfig) (ports.
 func (f *fakeRuntime) IsAlive(_ context.Context, _ ports.RuntimeHandle) (bool, error) {
 	return f.alive, nil
 }
-func (f *fakeRuntime) Destroy(_ context.Context, _ ports.RuntimeHandle) error {
+func (f *fakeRuntime) Interrupt(_ context.Context, _ ports.RuntimeHandle) error {
 	return nil
 }
 func (f *fakeRuntime) SendMessage(_ context.Context, handle ports.RuntimeHandle, msg string) error {

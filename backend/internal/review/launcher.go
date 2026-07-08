@@ -21,7 +21,7 @@ type Launcher interface {
 	Notify(ctx context.Context, handleID string, spec LaunchSpec) error
 	// Alive reports whether a reviewer pane is still running.
 	Alive(ctx context.Context, handleID string) (bool, error)
-	// Cancel tears down a running reviewer pane.
+	// Cancel interrupts a running reviewer pane while keeping the terminal alive.
 	Cancel(ctx context.Context, handleID string) error
 }
 
@@ -42,7 +42,7 @@ type LaunchSpec struct {
 // satisfies it.
 type reviewerRuntime interface {
 	Create(ctx context.Context, cfg ports.RuntimeConfig) (ports.RuntimeHandle, error)
-	Destroy(ctx context.Context, handle ports.RuntimeHandle) error
+	Interrupt(ctx context.Context, handle ports.RuntimeHandle) error
 	IsAlive(ctx context.Context, handle ports.RuntimeHandle) (bool, error)
 	SendMessage(ctx context.Context, handle ports.RuntimeHandle, message string) error
 }
@@ -158,5 +158,5 @@ func (l *agentLauncher) Cancel(ctx context.Context, handleID string) error {
 	if handleID == "" {
 		return nil
 	}
-	return l.runtime.Destroy(ctx, ports.RuntimeHandle{ID: handleID})
+	return l.runtime.Interrupt(ctx, ports.RuntimeHandle{ID: handleID})
 }

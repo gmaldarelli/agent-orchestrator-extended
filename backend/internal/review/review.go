@@ -381,8 +381,8 @@ func (e *Engine) List(ctx stdctx.Context, workerID domain.SessionID) (SessionRev
 	return SessionReviews{ReviewerHandleID: handle, Runs: runs, Reviews: Plan(prs, runs)}, nil
 }
 
-// Cancel stops the live reviewer pane for a worker and marks running review runs
-// as failed so they no longer block a fresh trigger.
+// Cancel interrupts the live reviewer pane for a worker and marks running
+// review runs as cancelled so they no longer block a fresh trigger.
 func (e *Engine) Cancel(ctx stdctx.Context, workerID domain.SessionID) (CancelResult, error) {
 	if workerID == "" {
 		return CancelResult{}, fmt.Errorf("%w: worker session id is required", ErrInvalid)
@@ -406,10 +406,10 @@ func (e *Engine) Cancel(ctx stdctx.Context, workerID domain.SessionID) (CancelRe
 		if run.Status != domain.ReviewRunRunning {
 			continue
 		}
-		if ok, err := e.store.UpdateReviewRunResult(ctx, run.ID, domain.ReviewRunFailed, domain.VerdictNone, "cancelled by user", ""); err != nil {
+		if ok, err := e.store.UpdateReviewRunResult(ctx, run.ID, domain.ReviewRunCancelled, domain.VerdictNone, "cancelled by user", ""); err != nil {
 			return CancelResult{}, err
 		} else if ok {
-			run.Status = domain.ReviewRunFailed
+			run.Status = domain.ReviewRunCancelled
 			run.Verdict = domain.VerdictNone
 			run.Body = "cancelled by user"
 			run.GithubReviewID = ""

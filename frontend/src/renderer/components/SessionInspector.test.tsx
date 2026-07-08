@@ -434,7 +434,7 @@ describe("SessionInspector reviews tab", () => {
 		renderWithQuery(<SessionInspector session={session([pr(3, "open"), pr(4, "open"), pr(5, "draft")])} />);
 		await openReviewsTab();
 
-		expect(screen.getByText("Open pull requests")).toBeInTheDocument();
+		expect(screen.getByText("Pull requests")).toBeInTheDocument();
 		expect(await screen.findByText("Reviewable change 3")).toBeInTheDocument();
 		expect(screen.getByText("#3")).toBeInTheDocument();
 		expect(screen.getByText("Reviewable change 4")).toBeInTheDocument();
@@ -491,6 +491,19 @@ describe("SessionInspector reviews tab", () => {
 			});
 		});
 		expect(onOpenReviewerTerminal).not.toHaveBeenCalled();
+	});
+
+	it("shows cancelled review runs without marking them failed", async () => {
+		mockCommonGets([], "reviewer-pane", [
+			{ ...reviewState(3, "needs_review", "abc123"), latestRun: { ...failedReview, status: "cancelled" } },
+		]);
+
+		renderWithQuery(<SessionInspector session={session([pr(3, "open")])} />);
+		await openReviewsTab();
+
+		expect(await screen.findAllByText("Cancelled")).toHaveLength(2);
+		expect(screen.queryByText("Failed")).not.toBeInTheDocument();
+		expect(screen.getByRole("button", { name: "Re-run review" })).toBeEnabled();
 	});
 
 	it("shows the reviewer identity and aggregate verdict", async () => {

@@ -237,7 +237,7 @@ func (q *Queries) MarkReviewRunDelivered(ctx context.Context, arg MarkReviewRunD
 }
 
 const supersedeReviewRun = `-- name: SupersedeReviewRun :execrows
-UPDATE review_run SET status = 'failed', body = ? WHERE id = ? AND verdict = '' AND status != 'failed'
+UPDATE review_run SET status = 'failed', body = ? WHERE id = ? AND verdict = '' AND status NOT IN ('failed', 'cancelled')
 `
 
 type SupersedeReviewRunParams struct {
