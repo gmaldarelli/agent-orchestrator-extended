@@ -6,7 +6,6 @@ import {
 	ipcMain,
 	net,
 	nativeImage,
-
 	protocol,
 	shell,
 	WebContentsView,
@@ -1126,10 +1125,14 @@ if (!app.isPackaged) {
 		if (!mainWindow) return;
 		if (process.platform === "darwin") {
 			const id = app.dock?.bounce("critical");
-			setTimeout(() => { if (id !== undefined) app.dock?.cancelBounce(id); }, 2000);
+			setTimeout(() => {
+				if (id !== undefined) app.dock?.cancelBounce(id);
+			}, 2000);
 		} else if (process.platform === "win32" || process.platform === "linux") {
 			mainWindow.flashFrame(true);
-			setTimeout(() => { mainWindow?.flashFrame(false); }, 2000);
+			setTimeout(() => {
+				mainWindow?.flashFrame(false);
+			}, 2000);
 		}
 	});
 }

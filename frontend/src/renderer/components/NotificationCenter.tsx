@@ -96,7 +96,11 @@ export function NotificationCenter({ style }: NotificationCenterProps) {
 	};
 
 	return (
-		<DropdownMenu onOpenChange={(open) => { if (open) setActionError(null); }}>
+		<DropdownMenu
+			onOpenChange={(open) => {
+				if (open) setActionError(null);
+			}}
+		>
 			<DropdownMenuTrigger asChild>
 				<button
 					aria-label={unreadCount > 0 ? `${unreadCount} unread notifications` : "Notifications"}

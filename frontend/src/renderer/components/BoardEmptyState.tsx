@@ -41,10 +41,7 @@ export function BoardWelcome() {
 								<span key={stage.label} className="flex items-center gap-1.5">
 									{i > 0 && <span className="text-[10px] text-passive">→</span>}
 									<span className="flex items-center gap-1">
-										<span
-											className="h-[6px] w-[6px] shrink-0 rounded-full"
-											style={{ background: stage.color }}
-										/>
+										<span className="h-[6px] w-[6px] shrink-0 rounded-full" style={{ background: stage.color }} />
 										<span className="text-[11.5px] text-muted-foreground">{stage.label}</span>
 									</span>
 								</span>
@@ -70,9 +67,7 @@ export function BoardWelcome() {
 						</>
 					)}
 				</CreateProjectFlow>
-				<p className="mt-2.5 text-[11px] text-passive">
-					Starts an orchestrator session for the project.
-				</p>
+				<p className="mt-2.5 text-[11px] text-passive">Starts an orchestrator session for the project.</p>
 			</div>
 		</div>
 	);
