@@ -469,7 +469,7 @@ describe("SessionInspector reviews tab", () => {
 		expect(onOpenReviewerTerminal).not.toHaveBeenCalled();
 	});
 
-	it("shows a stop action instead of allowing rerun while review is running", async () => {
+	it("shows a cancel action in place of rerun while review is running", async () => {
 		mockCommonGets([approvedReview], "reviewer-pane", [
 			reviewState(3, "running", "abc123"),
 			reviewState(4, "up_to_date", "def456"),
@@ -481,9 +481,9 @@ describe("SessionInspector reviews tab", () => {
 		);
 		await openReviewsTab();
 
-		await waitFor(() => expect(screen.getByRole("button", { name: "Review running" })).toBeDisabled());
+		await waitFor(() => expect(screen.getByRole("button", { name: "Cancel review" })).toBeEnabled());
 		expect(screen.queryByRole("button", { name: /re-run review/i })).not.toBeInTheDocument();
-		await userEvent.click(screen.getByRole("button", { name: /stop review/i }));
+		await userEvent.click(screen.getByRole("button", { name: /cancel review/i }));
 
 		expect(onOpenReviewerTerminal).toHaveBeenCalledWith({ handleId: "reviewer-pane", harness: "codex" });
 	});

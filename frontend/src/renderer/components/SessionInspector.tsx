@@ -640,10 +640,13 @@ function ReviewPanel({
 	const aggregateVerdict = sessionReviewVerdict(openReviewStates);
 	const reviewRunning = openReviewStates.some((reviewState) => reviewState.status === "running");
 	const runAction = reviewSessionRunAction(openReviewStates, isTriggering);
+	const openReviewerTerminal = () => {
+		if (!terminalEnabled) return;
+		onOpenTerminal?.({ handleId: reviewerHandleId, harness });
+	};
 	const runDisabled =
 		isTriggering ||
 		openReviewStates.length === 0 ||
-		reviewRunning ||
 		openReviewStates.every((reviewState) => reviewState.status === "ineligible");
 
 	return (
@@ -686,24 +689,21 @@ function ReviewPanel({
 				<div className="grid grid-cols-2 gap-2.5 pt-1 has-[:only-child]:grid-cols-1 @max-[300px]/inspector:grid-cols-1">
 					<button
 						className="inline-flex h-control-xl min-w-0 items-center justify-center gap-2 overflow-hidden truncate rounded-md border border-success/42 bg-success/10 px-2.5 text-xs font-semibold text-success-bright transition-[background,border-color,color] duration-fast hover:bg-interactive-hover hover:text-foreground disabled:cursor-not-allowed disabled:opacity-45 [&_svg]:size-icon-md [&_svg]:shrink-0"
-						disabled={runDisabled}
-						onClick={onTrigger}
+						disabled={reviewRunning ? !terminalEnabled : runDisabled}
+						onClick={reviewRunning ? openReviewerTerminal : onTrigger}
 						type="button"
 					>
-						<Play aria-hidden="true" />
-						{reviewRunning ? "Review running" : runAction}
+						{reviewRunning ? <Terminal aria-hidden="true" /> : <Play aria-hidden="true" />}
+						{reviewRunning ? "Cancel review" : runAction}
 					</button>
 					<button
 						className="inline-flex h-control-xl min-w-0 items-center justify-center gap-2 overflow-hidden truncate rounded-md border border-border bg-raised px-2.5 text-xs font-semibold text-muted-foreground transition-[background,border-color,color] duration-fast hover:bg-interactive-hover hover:text-foreground disabled:cursor-not-allowed disabled:opacity-45 [&_svg]:size-icon-md [&_svg]:shrink-0"
 						disabled={!terminalEnabled}
-						onClick={() => {
-							if (!terminalEnabled) return;
-							onOpenTerminal?.({ handleId: reviewerHandleId, harness });
-						}}
+						onClick={openReviewerTerminal}
 						type="button"
 					>
 						<Terminal aria-hidden="true" />
-						{reviewRunning ? "Stop review" : "Open terminal"}
+						Open terminal
 					</button>
 				</div>
 			</div>
