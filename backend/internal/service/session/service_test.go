@@ -243,6 +243,12 @@ func (f *fakeCommander) RetireForReplacement(_ context.Context, id domain.Sessio
 	f.retired = append(f.retired, id)
 	return nil
 }
+func (f *fakeCommander) AffectedByPermissionChange(_ context.Context, _ domain.ProjectID) ([]sessionmanager.AffectedSession, error) {
+	return nil, nil
+}
+func (f *fakeCommander) RelaunchForPermissionChange(_ context.Context, _ domain.ProjectID) ([]sessionmanager.RelaunchOutcome, error) {
+	return nil, nil
+}
 func (f *fakeCommander) Send(_ context.Context, id domain.SessionID, _ string) error {
 	if f.sendErr != nil {
 		return f.sendErr
