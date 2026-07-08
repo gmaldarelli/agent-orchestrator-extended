@@ -19,7 +19,7 @@ export function BoardWelcome() {
 			<div className="flex w-full max-w-[460px] flex-col items-center pb-[6vh] text-center">
 				<img src={aoLogo} alt="" aria-hidden="true" className="h-8 w-8 rounded-[8px] object-cover" />
 				<h2 className="mt-4 text-[15px] font-semibold tracking-[-0.01em] text-foreground">
-					Agent Orchestrator
+					Welcome to Agent Orchestrator
 				</h2>
 				<p className="mt-1.5 max-w-[320px] text-[12.5px] leading-[1.65] text-muted-foreground">
 					Add a repository and describe the work. AO runs agents on isolated branches, from start to merge.
