@@ -1799,15 +1799,14 @@ func (m *Manager) buildSystemPrompt(ctx context.Context, kind domain.SessionKind
 	if err != nil {
 		return "", err
 	}
-	role := promptRoleForKind(kind)
 	cfg := systemPromptConfig{
-		Role:    role,
+		Role:    promptRoleForKind(kind),
 		Project: promptProjectContext(projectID, project),
 	}
+
 	switch kind {
 	case domain.KindOrchestrator:
 		cfg.OrchestratorRules = project.Config.OrchestratorRules
-		cfg.AdditionalSections = append(cfg.AdditionalSections, orchestratorCommandReference(projectID))
 	case domain.KindWorker:
 		orchestratorID, ok, err := m.activeOrchestratorSessionID(ctx, projectID)
 		if err != nil {
@@ -1825,20 +1824,57 @@ func (m *Manager) buildSystemPrompt(ctx context.Context, kind domain.SessionKind
 			return "", err
 		}
 		cfg.ProjectRules = rules
+	default:
+		return "", nil
 	}
-	if project.Kind.WithDefault() == domain.ProjectKindWorkspace {
-		repos, err := m.store.ListWorkspaceRepos(ctx, string(projectID))
-		if err != nil {
-			return "", err
-		}
-		if kind == domain.KindOrchestrator {
-			cfg.AdditionalSections = append(cfg.AdditionalSections, workspaceOrchestratorPrompt(repos))
-		} else {
-			cfg.AdditionalSections = append(cfg.AdditionalSections, workspaceWorkerPrompt(repos))
-		}
+
+	workspacePrompt, err := m.workspaceProjectPrompt(ctx, kind, projectID)
+	if err != nil {
+		return "", err
 	}
-	cfg.AdditionalSections = append(cfg.AdditionalSections, usingAOSkillPrompt(m.dataDir))
+	if workspacePrompt != "" {
+		cfg.AdditionalSections = append(cfg.AdditionalSections, workspacePrompt)
+	}
+	if pointer := strings.TrimSpace(m.aoSkillPointer()); pointer != "" {
+		cfg.AdditionalSections = append(cfg.AdditionalSections, pointer)
+	}
 	return buildSystemPromptText(cfg), nil
+}
+
+// aoSkillPointer is appended to every agent system prompt. It points the agent
+// at the using-ao skill the daemon installs under the data dir, rather than
+// inlining the whole CLI catalog. The path is absolute so it resolves from any
+// project's worktree, not just the AO repo (the only place a repo-relative
+// skills/ path would exist). The skill file carries exact flags and examples,
+// so the standing prompt stays a short pointer rather than a command dump.
+func (m *Manager) aoSkillPointer() string {
+	dir := skillassets.Dir(m.dataDir)
+	skillFile := filepath.Join(dir, "SKILL.md")
+	commandsGlob := filepath.Join(dir, "commands", "*.md")
+	return "\n\n" + "## Using the ao CLI\n\n" +
+		"When you need to use the `ao` CLI, read `" + skillFile + "` first (and the relevant `" + commandsGlob + "`) for the full command catalog, flags, and examples."
+}
+
+func (m *Manager) workspaceProjectPrompt(ctx context.Context, kind domain.SessionKind, projectID domain.ProjectID) (string, error) {
+	project, err := m.loadProject(ctx, projectID)
+	if err != nil {
+		return "", err
+	}
+	if project.Kind.WithDefault() != domain.ProjectKindWorkspace {
+		return "", nil
+	}
+	repos, err := m.store.ListWorkspaceRepos(ctx, string(projectID))
+	if err != nil {
+		return "", fmt.Errorf("list workspace repos for prompt: %w", err)
+	}
+	switch kind {
+	case domain.KindOrchestrator:
+		return workspaceOrchestratorPrompt(repos), nil
+	case domain.KindWorker:
+		return workspaceWorkerPrompt(repos), nil
+	default:
+		return "", nil
+	}
 }
 
 func (m *Manager) activeOrchestratorSessionID(ctx context.Context, project domain.ProjectID) (domain.SessionID, bool, error) {
@@ -1911,14 +1947,6 @@ func (m *Manager) cleanupSystemPromptDir(id domain.SessionID) {
 	}
 }
 
-func orchestratorCommandReference(project domain.ProjectID) string {
-	return fmt.Sprintf("## AO Command Reference\n\n"+
-		"Spawn worker sessions for implementation with:\n"+
-		"`ao spawn --project %s --name \"<label, max 20 chars>\" --prompt \"<clear worker task>\"`\n\n"+
-		"To run a worker on a specific agent, add `--agent <name>`. Run `ao spawn --help` for the full list of agents and every flag.\n\n"+
-		"To discover any other AO command, run `ao --help` and `ao <command> --help` for command-specific details.", project)
-}
-
 func workspaceOrchestratorPrompt(repos []domain.WorkspaceRepoRecord) string {
 	return fmt.Sprintf(`## Workspace project
 
@@ -1948,10 +1976,6 @@ func workspaceRepoList(repos []domain.WorkspaceRepoRecord) string {
 		lines = append(lines, fmt.Sprintf("- %s: %s", repo.Name, repo.RelativePath))
 	}
 	return strings.Join(lines, "\n")
-}
-
-func usingAOSkillPrompt(dataDir string) string {
-	return fmt.Sprintf("## AO CLI Skill\n\nDetailed AO command guidance is available at `%s`.", filepath.Join(skillassets.Dir(dataDir), "SKILL.md"))
 }
 
 // spawnEnv builds the runtime environment: the per-project env vars first, then
