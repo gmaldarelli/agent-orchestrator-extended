@@ -60,6 +60,7 @@ export function ShellTopbar() {
 	const params = useParams({ strict: false }) as { projectId?: string; sessionId?: string };
 	const isInspectorOpen = useUiStore((state) => state.isInspectorOpen);
 	const toggleInspector = useUiStore((state) => state.toggleInspector);
+	const restartingProjectIds = useUiStore((state) => state.restartingProjectIds);
 	const [isSpawning, setIsSpawning] = useState(false);
 	const [isNewTaskOpen, setIsNewTaskOpen] = useState(false);
 	const all = useWorkspaceQuery().data ?? [];
@@ -79,6 +80,7 @@ export function ShellTopbar() {
 	const project = projectId ? all.find((workspace) => workspace.id === projectId) : undefined;
 	const projectLabel = project?.name ?? session?.workspaceName ?? (projectId ? "" : "agent-orchestrator");
 	const orchestrator = projectId ? findProjectOrchestrator(all, projectId) : undefined;
+	const isProjectRestarting = projectId ? restartingProjectIds.has(projectId) : false;
 
 	if (isLinux && !isSessionRoute) {
 		return null;
@@ -88,12 +90,12 @@ export function ShellTopbar() {
 		projectId ? void navigate({ to: "/projects/$projectId", params: { projectId } }) : void navigate({ to: "/" });
 
 	const openNewTask = () => {
-		if (!projectId) return;
+		if (!projectId || isProjectRestarting) return;
 		setIsNewTaskOpen(true);
 	};
 
 	const handleTaskCreated = async (sessionId: string) => {
-		if (!projectId) return;
+		if (!projectId || isProjectRestarting) return;
 		await queryClient.invalidateQueries({ queryKey: workspaceQueryKey });
 		void navigate({
 			to: "/projects/$projectId/sessions/$sessionId",
@@ -119,7 +121,7 @@ export function ShellTopbar() {
 		}
 		setIsSpawning(true);
 		try {
-			const sessionId = await spawnOrchestrator(projectId);
+			const sessionId = await spawnOrchestrator(projectId, "topbar");
 			await queryClient.invalidateQueries({ queryKey: workspaceQueryKey });
 			void navigate({
 				to: "/projects/$projectId/sessions/$sessionId",
@@ -173,64 +175,69 @@ export function ShellTopbar() {
 
 			<div className="dashboard-app-header__actions">
 				{!isLinux ? <NotificationCenter style={noDragStyle} /> : null}
-				{isSessionRoute && isOrchestrator ? (
+				{isSessionRoute ? (
 					<>
-						<button
-							aria-label="New task"
-							className="dashboard-app-header__primary-btn"
-							onClick={openNewTask}
-							style={noDragStyle}
-							type="button"
-						>
-							<Plus className="h-3.5 w-3.5" aria-hidden="true" />
-							New task
-						</button>
-						<button
-							aria-label="Open Kanban"
-							className="dashboard-app-header__accent-btn"
-							onClick={openBoard}
-							style={noDragStyle}
-							type="button"
-						>
-							<LayoutDashboard className="h-3.5 w-3.5" aria-hidden="true" />
-							Kanban
-						</button>
+						{isOrchestrator ? (
+							<>
+								<button
+									aria-label="New task"
+									className="dashboard-app-header__primary-btn"
+									disabled={isProjectRestarting}
+									onClick={openNewTask}
+									style={noDragStyle}
+									type="button"
+								>
+									<Plus className="h-3.5 w-3.5" aria-hidden="true" />
+									New task
+								</button>
+								<button
+									aria-label="Open Kanban"
+									className="dashboard-app-header__accent-btn"
+									onClick={openBoard}
+									style={noDragStyle}
+									type="button"
+								>
+									<LayoutDashboard className="h-3.5 w-3.5" aria-hidden="true" />
+									Kanban
+								</button>
+							</>
+						) : null}
+						{/* Kill control sits beside the orchestrator link for active workers —
+						    moved here from the inspector's Summary "Danger zone". */}
+						{!isOrchestrator && session && sessionIsActive(session) ? <TopbarKillButton session={session} /> : null}
+						{!isOrchestrator && (
+							<button
+								aria-label="Open orchestrator"
+								className="dashboard-app-header__primary-btn dashboard-app-header__primary-btn--compact"
+								disabled={isSpawning || isProjectRestarting}
+								onClick={() => void openOrchestrator()}
+								style={noDragStyle}
+								type="button"
+							>
+								<OrchestratorIcon className="h-3.5 w-3.5" aria-hidden="true" />
+								{isProjectRestarting ? "Restarting…" : isSpawning ? "Spawning…" : "Orchestrator"}
+							</button>
+						)}
+						{/* Inspector collapse (worker sessions only — orchestrators have no rail). */}
+						{!isOrchestrator && (
+							<button
+								aria-label={isInspectorOpen ? "Close inspector panel" : "Open inspector panel"}
+								aria-pressed={isInspectorOpen}
+								className="dashboard-app-header__icon-btn"
+								onClick={toggleInspector}
+								style={noDragStyle}
+								title={`${isInspectorOpen ? "Close" : "Open"} inspector · ⌘⇧B`}
+								type="button"
+							>
+								{isInspectorOpen ? (
+									<PanelRightClose className="h-[15px] w-[15px]" aria-hidden="true" />
+								) : (
+									<PanelRightOpen className="h-[15px] w-[15px]" aria-hidden="true" />
+								)}
+							</button>
+						)}
 					</>
 				) : null}
-				{/* Kill control sits beside the orchestrator link for active workers —
-				    moved here from the inspector's Summary "Danger zone". */}
-				{!isOrchestrator && session && sessionIsActive(session) ? <TopbarKillButton session={session} /> : null}
-				{isSessionRoute && !isOrchestrator && (
-					<button
-						aria-label="Open orchestrator"
-						className="dashboard-app-header__primary-btn dashboard-app-header__primary-btn--compact"
-						disabled={isSpawning}
-						onClick={() => void openOrchestrator()}
-						style={noDragStyle}
-						type="button"
-					>
-						<OrchestratorIcon className="h-3.5 w-3.5" aria-hidden="true" />
-						{isSpawning ? "Spawning…" : "Orchestrator"}
-					</button>
-				)}
-				{/* Inspector collapse (worker sessions only — orchestrators have no rail). */}
-				{isSessionRoute && !isOrchestrator && (
-					<button
-						aria-label={isInspectorOpen ? "Close inspector panel" : "Open inspector panel"}
-						aria-pressed={isInspectorOpen}
-						className="dashboard-app-header__icon-btn"
-						onClick={toggleInspector}
-						style={noDragStyle}
-						title={`${isInspectorOpen ? "Close" : "Open"} inspector · ⌘⇧B`}
-						type="button"
-					>
-						{isInspectorOpen ? (
-							<PanelRightClose className="h-[15px] w-[15px]" aria-hidden="true" />
-						) : (
-							<PanelRightOpen className="h-[15px] w-[15px]" aria-hidden="true" />
-						)}
-					</button>
-				)}
 			</div>
 			<NewTaskDialog
 				open={isNewTaskOpen}
@@ -254,16 +261,21 @@ export function TopbarKillButton({ session }: { session: WorkspaceSession }) {
 
 	const kill = useMutation({
 		mutationFn: async () => {
+			void captureRendererEvent("ao.renderer.session_kill_requested", { project_id: session.workspaceId });
 			const { error: apiError } = await apiClient.POST("/api/v1/sessions/{sessionId}/kill", {
 				params: { path: { sessionId: session.id } },
 			});
 			if (apiError) throw new Error(apiErrorMessage(apiError));
 		},
 		onSuccess: () => {
+			void captureRendererEvent("ao.renderer.session_kill_succeeded", { project_id: session.workspaceId });
 			setConfirming(false);
 			void queryClient.invalidateQueries({ queryKey: workspaceQueryKey });
 		},
-		onError: (e) => setError(e instanceof Error ? e.message : "Kill failed"),
+		onError: (e) => {
+			void captureRendererEvent("ao.renderer.session_kill_failed", { project_id: session.workspaceId });
+			setError(e instanceof Error ? e.message : "Kill failed");
+		},
 	});
 
 	if (confirming) {

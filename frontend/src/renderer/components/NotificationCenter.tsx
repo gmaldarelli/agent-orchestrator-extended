@@ -10,6 +10,7 @@ import {
 import { aoBridge } from "../lib/bridge";
 import { formatTimeCompact } from "../lib/format-time";
 import { createNotificationsTransport, type NotificationDTO, unreadNotificationsQueryKey } from "../lib/notifications";
+import { captureRendererEvent } from "../lib/telemetry";
 import { cn } from "../lib/utils";
 import {
 	DropdownMenu,
@@ -23,25 +24,19 @@ type NotificationCenterProps = {
 	style?: React.CSSProperties;
 };
 
-export function NotificationCenter({ style }: NotificationCenterProps) {
+function useNotificationTargetNavigation() {
 	const navigate = useNavigate();
-	const queryClient = useQueryClient();
-	const notificationsQuery = useNotificationsQuery();
-	const markRead = useMarkNotificationReadMutation();
-	const markAllRead = useMarkAllNotificationsReadMutation();
-	const [actionError, setActionError] = useState<string | null>(null);
-	const notifications = useMemo(() => notificationsQuery.data ?? [], [notificationsQuery.data]);
-	const unreadCount = notifications.length;
-
-	const openTarget = useCallback(
+	return useCallback(
 		(notification: NotificationDTO) => {
 			const target = notification.target;
 			if (target.kind === "pr" && target.prUrl) {
+				void captureRendererEvent("ao.renderer.notification_opened", { target: "pr" });
 				window.open(target.prUrl, "_blank", "noopener,noreferrer");
 				return;
 			}
 			const sessionId = target.sessionId || notification.sessionId;
 			if (!sessionId) return;
+			void captureRendererEvent("ao.renderer.notification_opened", { target: "session" });
 			if (notification.projectId) {
 				void navigate({
 					to: "/projects/$projectId/sessions/$sessionId",
@@ -53,6 +48,11 @@ export function NotificationCenter({ style }: NotificationCenterProps) {
 		},
 		[navigate],
 	);
+}
+
+export function NotificationRuntime() {
+	const queryClient = useQueryClient();
+	const openTarget = useNotificationTargetNavigation();
 
 	useEffect(() => createNotificationsTransport(queryClient).connect(), [queryClient]);
 
@@ -64,20 +64,38 @@ export function NotificationCenter({ style }: NotificationCenterProps) {
 		});
 	}, [openTarget, queryClient]);
 
+	return null;
+}
+
+export function NotificationCenter({ style }: NotificationCenterProps) {
+	const notificationsQuery = useNotificationsQuery();
+	const markRead = useMarkNotificationReadMutation();
+	const markAllRead = useMarkAllNotificationsReadMutation();
+	const [actionError, setActionError] = useState<string | null>(null);
+	const notifications = useMemo(() => notificationsQuery.data ?? [], [notificationsQuery.data]);
+	const unreadCount = notifications.length;
+	const openTarget = useNotificationTargetNavigation();
+
 	const markOneRead = async (id: string) => {
 		setActionError(null);
+		void captureRendererEvent("ao.renderer.notification_mark_read_requested", { scope: "single" });
 		try {
 			await markRead.mutateAsync(id);
+			void captureRendererEvent("ao.renderer.notification_mark_read_succeeded", { scope: "single" });
 		} catch (error) {
+			void captureRendererEvent("ao.renderer.notification_mark_read_failed", { scope: "single" });
 			setActionError(error instanceof Error ? error.message : "Could not mark notification read");
 		}
 	};
 
 	const markAll = async () => {
 		setActionError(null);
+		void captureRendererEvent("ao.renderer.notification_mark_read_requested", { scope: "all" });
 		try {
 			await markAllRead.mutateAsync();
+			void captureRendererEvent("ao.renderer.notification_mark_read_succeeded", { scope: "all" });
 		} catch (error) {
+			void captureRendererEvent("ao.renderer.notification_mark_read_failed", { scope: "all" });
 			setActionError(error instanceof Error ? error.message : "Could not mark notifications read");
 		}
 	};

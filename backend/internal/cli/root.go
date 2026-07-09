@@ -184,6 +184,7 @@ func NewRootCommand(deps Deps) *cobra.Command {
 	root.AddCommand(newStopCommand(ctx))
 	root.AddCommand(newStatusCommand(ctx))
 	root.AddCommand(newDoctorCommand(ctx))
+	root.AddCommand(newAgentCommand(ctx))
 	root.AddCommand(newSpawnCommand(ctx))
 	root.AddCommand(newSendCommand(ctx))
 	root.AddCommand(newPreviewCommand(ctx))
@@ -252,6 +253,13 @@ func usageErrorCommand(args []string) (string, string) {
 
 func noArgs(cmd *cobra.Command, args []string) error {
 	if err := cobra.ExactArgs(0)(cmd, args); err != nil {
+		return usageError{err}
+	}
+	return nil
+}
+
+func atMostOneArg(cmd *cobra.Command, args []string) error {
+	if err := cobra.MaximumNArgs(1)(cmd, args); err != nil {
 		return usageError{err}
 	}
 	return nil

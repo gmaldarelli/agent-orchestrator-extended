@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -51,6 +52,7 @@ type Store interface {
 	ListAllSessions(ctx context.Context) ([]domain.SessionRecord, error)
 	GetProject(ctx context.Context, id string) (domain.ProjectRecord, bool, error)
 	UpsertProject(ctx context.Context, row domain.ProjectRecord) error
+	ListWorkspaceRepos(ctx context.Context, projectID string) ([]domain.WorkspaceRepoRecord, error)
 	ListPRsBySession(ctx context.Context, sessionID domain.SessionID) ([]domain.PullRequest, error)
 	ListChecks(ctx context.Context, prURL string) ([]domain.PullRequestCheck, error)
 	WriteSCMObservation(ctx context.Context, pr domain.PullRequest, checks []domain.PullRequestCheck, reviews []domain.PullRequestReview, threads []domain.PullRequestReviewThread, comments []domain.PullRequestComment, reviewMode ports.ReviewWriteMode) error
@@ -191,12 +193,18 @@ type subject struct {
 	hasPR   bool
 }
 
-// sessionRepo pairs a live session with its parsed repo and branch for per-repo
-// branch-prefix discovery of new (including stacked) pull requests.
+// sessionRepo pairs a live session with a repo to scan and its branch for
+// per-repo branch-prefix discovery of new (including stacked) pull requests.
+// A session is scanned against its push origin plus every other remote in the
+// project checkout, so repo is the repo whose open-PR list is listed while
+// headRepo is the repo the session's head branch actually lives in (the push
+// origin). For same-repo PRs repo == headRepo; for a cross-fork PR (fork head,
+// upstream base) repo is the upstream base and headRepo is the fork origin.
 type sessionRepo struct {
-	session domain.SessionRecord
-	repo    ports.SCMRepo
-	branch  string
+	session  domain.SessionRecord
+	repo     ports.SCMRepo
+	headRepo ports.SCMRepo
+	branch   string
 }
 
 type repoGuardState struct {
@@ -424,6 +432,8 @@ func (o *Observer) discoverSubjects(ctx context.Context) (map[string]*subject, [
 		return nil, nil, err
 	}
 	projects := map[domain.ProjectID]domain.ProjectRecord{}
+	originRepos := map[domain.ProjectID]ports.SCMRepo{}
+	scanRepos := map[domain.ProjectID][]ports.SCMRepo{}
 	out := map[string]*subject{}
 	var sessionRepos []sessionRepo
 	for _, sess := range sessions {
@@ -453,27 +463,152 @@ func (o *Observer) discoverSubjects(ctx context.Context) (map[string]*subject, [
 			}
 			projects[sess.ProjectID] = p
 			proj = p
+			if origin, ok := o.provider.ParseRepository(p.RepoOriginURL); ok {
+				originRepos[sess.ProjectID] = origin
+				scanRepos[sess.ProjectID] = o.resolveScanRepos(p, origin)
+			}
 		}
-		repo, ok := o.provider.ParseRepository(proj.RepoOriginURL)
-		if !ok {
-			o.logger.Debug("scm observer: project has no supported SCM origin", "project", proj.ID, "origin", proj.RepoOriginURL)
+		repos := make([]ports.SCMRepo, 0, len(scanRepos[sess.ProjectID]))
+		if origin, ok := originRepos[sess.ProjectID]; ok {
+			for _, repo := range scanRepos[sess.ProjectID] {
+				sessionRepos = append(sessionRepos, sessionRepo{session: sess, repo: repo, headRepo: origin, branch: branch})
+				repos = append(repos, repo)
+			}
+		}
+		childRepos, err := o.workspaceSCMSessionRepos(ctx, proj, sess, branch)
+		if err != nil {
+			return nil, nil, err
+		}
+		for _, child := range childRepos {
+			sessionRepos = append(sessionRepos, child)
+			repos = append(repos, child.repo)
+		}
+		if len(repos) == 0 {
+			o.logger.Debug("scm observer: project has no supported SCM origins", "project", proj.ID)
 			continue
 		}
-		sessionRepos = append(sessionRepos, sessionRepo{session: sess, repo: repo, branch: branch})
 		prs, err := o.store.ListPRsBySession(ctx, sess.ID)
 		if err != nil {
 			return nil, nil, err
 		}
 		for _, pr := range openTrackedPRs(prs) {
-			key := prKey(repo, pr.Number)
+			prRepo, ok := repoForTrackedPR(pr, repos)
+			if !ok {
+				o.logger.Warn("scm observer: tracked PR repo no longer belongs to project", "session", sess.ID, "pr", pr.URL, "repo", pr.Repo)
+				continue
+			}
+			key := prKey(prRepo, pr.Number)
 			if existing, ok := out[key]; ok {
 				o.logger.Warn("scm observer: duplicate tracked PR ownership skipped", "pr", key, "kept_session", existing.session.ID, "skipped_session", sess.ID)
 				continue
 			}
-			out[key] = &subject{session: sess, repo: repo, branch: branch, known: pr, hasPR: true}
+			out[key] = &subject{session: sess, repo: prRepo, branch: branch, known: pr, hasPR: true}
 		}
 	}
 	return out, sessionRepos, nil
+}
+
+// resolveScanRepos returns the deduped set of repos whose open-PR lists should be
+// scanned to attribute PRs to this project's sessions: the push origin plus every
+// other GitHub remote configured in the project checkout (upstreams, mirrors).
+// Attribution still requires a PR's head branch to live in the origin, so scanning
+// extra remotes only surfaces cross-fork PRs (fork head, upstream base) and can
+// never misattribute a stranger's PR.
+//
+// ponytail: remotes are read once per project per process (memoized by the
+// caller); a remote added after the daemon started is picked up on restart. Move
+// to a git-config watch if that latency ever matters.
+func (o *Observer) resolveScanRepos(proj domain.ProjectRecord, origin ports.SCMRepo) []ports.SCMRepo {
+	repos := []ports.SCMRepo{origin}
+	if strings.TrimSpace(proj.Path) == "" {
+		return repos
+	}
+	seen := map[string]bool{prKey(origin, 0): true}
+	for _, url := range gitRemoteURLsFunc(proj.Path) {
+		repo, ok := o.provider.ParseRepository(url)
+		if !ok {
+			continue
+		}
+		key := prKey(repo, 0)
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		repos = append(repos, repo)
+	}
+	return repos
+}
+
+func (o *Observer) workspaceSCMSessionRepos(ctx context.Context, proj domain.ProjectRecord, sess domain.SessionRecord, branch string) ([]sessionRepo, error) {
+	if proj.Kind.WithDefault() != domain.ProjectKindWorkspace {
+		return nil, nil
+	}
+	childRepos, err := o.store.ListWorkspaceRepos(ctx, proj.ID)
+	if err != nil {
+		return nil, err
+	}
+	repos := make([]sessionRepo, 0, len(childRepos))
+	seen := map[string]bool{}
+	for _, child := range childRepos {
+		if strings.TrimSpace(child.RepoOriginURL) == "" {
+			continue
+		}
+		repo, ok := o.provider.ParseRepository(child.RepoOriginURL)
+		if !ok {
+			o.logger.Debug("scm observer: unsupported SCM origin", "project", proj.ID, "repo", child.Name, "origin", child.RepoOriginURL)
+			continue
+		}
+		childPath := filepath.Join(proj.Path, filepath.FromSlash(child.RelativePath))
+		for _, scanRepo := range o.resolveScanRepos(domain.ProjectRecord{Path: childPath}, repo) {
+			key := prKey(scanRepo, 0)
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
+			repos = append(repos, sessionRepo{session: sess, repo: scanRepo, headRepo: repo, branch: branch})
+		}
+	}
+	return repos, nil
+}
+
+func repoForTrackedPR(pr domain.PullRequest, repos []ports.SCMRepo) (ports.SCMRepo, bool) {
+	if pr.Provider != "" && pr.Host != "" && pr.Repo != "" {
+		owner, name, ok := strings.Cut(pr.Repo, "/")
+		if !ok || owner == "" || name == "" {
+			return ports.SCMRepo{}, false
+		}
+		return ports.SCMRepo{Provider: pr.Provider, Host: pr.Host, Owner: owner, Name: name, Repo: pr.Repo}, true
+	}
+	if pr.Repo != "" {
+		for _, repo := range repos {
+			if matchesTrackedPRRepo(pr, repo) {
+				return repo, true
+			}
+		}
+		return ports.SCMRepo{}, false
+	}
+	if len(repos) == 1 {
+		return repos[0], true
+	}
+	for _, repo := range repos {
+		if strings.EqualFold(repo.Repo, repos[0].Repo) {
+			return repo, true
+		}
+	}
+	return repos[0], len(repos) > 0
+}
+
+func matchesTrackedPRRepo(pr domain.PullRequest, repo ports.SCMRepo) bool {
+	if pr.Provider != "" && !strings.EqualFold(pr.Provider, repo.Provider) {
+		return false
+	}
+	if pr.Host != "" && !strings.EqualFold(pr.Host, repo.Host) {
+		return false
+	}
+	if pr.Repo != "" && !strings.EqualFold(pr.Repo, repoFullName(repo)) {
+		return false
+	}
+	return true
 }
 
 func openTrackedPRs(prs []domain.PullRequest) []domain.PullRequest {
@@ -550,20 +685,19 @@ func (o *Observer) discoverNewPRs(ctx context.Context, sessionRepos []sessionRep
 			if pr.Number <= 0 || pr.SourceBranch == "" {
 				continue
 			}
-			// Branch-prefix attribution must only claim PRs whose head branch
-			// lives in the project repo. A fork PR can carry a head branch whose
-			// name matches an AO session branch; its commits live in the fork, so
-			// auto-claiming it would misattribute work. Same-repo PRs always
-			// report the base repo's full name as their head repo, so anything
-			// else (including an empty head repo from a deleted fork) is skipped.
-			if !strings.EqualFold(pr.HeadRepo, repoFullName(repo)) {
-				continue
-			}
 			key := prKey(repo, pr.Number)
 			if _, ok := subjects[key]; ok {
 				continue
 			}
-			sr, ok := matchSession(byRepo[repoKey], pr.SourceBranch)
+			// Branch-prefix attribution must only claim PRs whose head branch
+			// lives in a session's push origin. A same-repo PR has head == origin
+			// == this scanned repo; a cross-fork PR (fork head, upstream base) has
+			// head == origin while this scanned repo is the upstream base. A
+			// stranger's fork PR carries a head repo no session owns and is
+			// dropped (as is an empty head repo from a deleted fork), preserving
+			// the no-misattribution guarantee.
+			eligible := candidatesForHeadRepo(byRepo[repoKey], pr.HeadRepo)
+			sr, ok := matchSession(eligible, pr.SourceBranch)
 			if !ok {
 				continue
 			}
@@ -612,6 +746,24 @@ func (o *Observer) discoverNewPRs(ctx context.Context, sessionRepos []sessionRep
 // branches are prefixes of the same source branch the longest (most specific)
 // one wins, so a child session claims its own stacked PRs rather than the
 // ancestor session.
+// candidatesForHeadRepo narrows the scanned repo's session candidates to those
+// whose head branch lives in headRepo (the PR's head repository full name). This
+// is the fork guard: a PR is only attributable when its head repo equals a
+// session's push origin, whether the PR was found on the origin itself or on a
+// scanned upstream base repo.
+func candidatesForHeadRepo(candidates []sessionRepo, headRepo string) []sessionRepo {
+	if strings.TrimSpace(headRepo) == "" {
+		return nil
+	}
+	var out []sessionRepo
+	for _, sr := range candidates {
+		if strings.EqualFold(repoFullName(sr.headRepo), headRepo) {
+			out = append(out, sr)
+		}
+	}
+	return out
+}
+
 func matchSession(candidates []sessionRepo, sourceBranch string) (sessionRepo, bool) {
 	var best sessionRepo
 	bestLen := -1
@@ -1231,6 +1383,29 @@ func resolveGitOriginURL(path string) string {
 	}
 	return strings.TrimSpace(string(out))
 }
+
+// gitRemoteURLs lists the fetch URL of every git remote configured at path. It
+// returns nil on any error (missing repo, no git, no remotes). The observer uses
+// it to scan upstream/mirror remotes for cross-fork PRs in addition to origin.
+func gitRemoteURLs(path string) []string {
+	out, err := aoprocess.Command("git", "-C", path, "remote").Output()
+	if err != nil {
+		return nil
+	}
+	var urls []string
+	for _, name := range strings.Fields(string(out)) {
+		u, err := aoprocess.Command("git", "-C", path, "remote", "get-url", name).Output()
+		if err != nil {
+			continue
+		}
+		if s := strings.TrimSpace(string(u)); s != "" {
+			urls = append(urls, s)
+		}
+	}
+	return urls
+}
+
+var gitRemoteURLsFunc = gitRemoteURLs
 
 func scrubLine(s string) string {
 	s = strings.ReplaceAll(s, "\n", " ")
