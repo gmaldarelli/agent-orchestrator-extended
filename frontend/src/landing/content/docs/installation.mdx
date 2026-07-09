@@ -1,36 +1,17 @@
 ---
 title: Installation
-description: Install AO, authenticate the tools it controls, and verify your first project.
+description: Download AO, open it, and connect your tools.
 ---
 
-import { Callout } from "fumadocs-ui/components/callout";
 import { Tab, Tabs } from "fumadocs-ui/components/tabs";
 import { Step, Steps } from "fumadocs-ui/components/steps";
 import { Accordions, Accordion } from "fumadocs-ui/components/accordion";
 
-This page gets your machine ready to run Agent Orchestrator. By the end, the desktop app should be installed, your source-control CLI should be authenticated, and an agent CLI should be ready to do the coding.
-
-<Callout type="info" title="What AO installs">
-	The supported fresh install is the **desktop app** from GitHub Releases. It owns the daemon, dashboard, and
-	repository workspace flow. The `@aoagents/ao` npm package is the legacy on-ramp: it ships the `ao` CLI, whose
-	`ao start` fetches and opens the same desktop app. The npm package is frozen and no longer updated.
-</Callout>
+<InstallDownloads />
 
 ## Prerequisites
 
-<PlatformSupport
-	macos="full"
-	linux="full"
-	windows="partial"
-	note={
-		<>
-			Windows support is actively improving. Use <code>defaults.runtime: process</code> instead of tmux. See{" "}
-			<a href="/docs/platforms#windows">Platforms</a>.
-		</>
-	}
-/>
-
-Install these before running AO:
+After the app is installed, make sure these tools are available before you start an AO project.
 
 | Tool            | Required               | Why AO needs it                                                                      |
 | --------------- | ---------------------- | ------------------------------------------------------------------------------------ |
@@ -41,12 +22,6 @@ Install these before running AO:
 | Node.js 20+     | Legacy/source installs | Needed only if you use the frozen npm CLI package or build AO from source.           |
 
 If you plan to use GitLab or Linear, install and authenticate their CLIs or credentials as described on the related plugin pages. A GitHub-only setup only needs `gh`.
-
-## Install AO
-
-Download the desktop app for your platform. This is the supported path for new setups: open the app, add a repository, and let AO start the daemon plus an app-managed git workspace.
-
-<InstallDownloads />
 
 ## Authenticate Your Tools
 

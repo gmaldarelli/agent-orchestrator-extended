@@ -467,14 +467,7 @@ pre.shiki code {
 /* Installation page download picker. Keeps the recommended desktop path more
    scannable than a markdown table while staying inside the docs visual system. */
 #nd-docs-layout .ao-install-downloads {
-	margin: 1.5rem 0 1.75rem;
-	overflow: hidden;
-	border: 1px solid var(--color-border-subtle);
-	border-radius: 12px;
-	background:
-		linear-gradient(135deg, color-mix(in srgb, var(--docs-accent) 8%, transparent), transparent 46%),
-		var(--color-fd-card);
-	box-shadow: 0 1px 0 rgba(255, 255, 255, 0.03) inset;
+	margin: 1.25rem 0 2rem;
 }
 
 #nd-docs-layout .ao-install-downloads__header {
@@ -482,52 +475,28 @@ pre.shiki code {
 	align-items: flex-start;
 	justify-content: space-between;
 	gap: 1rem;
-	padding: 1.1rem 1.15rem;
-	border-bottom: 1px solid var(--color-border-subtle);
+	margin-bottom: 0.85rem;
 }
 
 #nd-docs-layout .ao-install-downloads__copy {
 	min-width: 0;
 }
 
-#nd-docs-layout .ao-install-downloads__eyebrow {
-	margin-bottom: 0.35rem;
-	color: var(--docs-accent);
-	font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
-	font-size: 0.7rem;
-	font-weight: 650;
-	letter-spacing: 0.06em;
-	line-height: 1.2;
-	text-transform: uppercase;
-}
-
 #nd-docs-layout .ao-install-downloads__title {
 	color: var(--color-text-primary);
-	font-size: 1rem;
+	font-size: 1.05rem;
 	font-weight: 700;
 	letter-spacing: 0;
 	line-height: 1.35;
 }
 
-#nd-docs-layout .ao-install-downloads__description {
-	max-width: 54ch;
-	margin-top: 0.25rem;
-	color: var(--color-text-secondary);
-	font-size: 0.875rem;
-	line-height: 1.6;
-}
-
-#nd-docs-layout .ao-install-downloads__description code {
-	font-size: 0.82em;
-}
-
 #nd-docs-layout .prose a.ao-install-downloads__release {
 	flex: 0 0 auto;
 	margin-top: 0.05rem;
-	padding: 0.42rem 0.62rem;
+	padding: 0.45rem 0.65rem;
 	border: 1px solid var(--color-border-subtle);
 	border-radius: 7px;
-	background: var(--color-bg-subtle);
+	background: transparent;
 	color: var(--color-text-primary);
 	font-size: 0.8125rem;
 	font-weight: 600;
@@ -546,68 +515,10 @@ pre.shiki code {
 	text-decoration: none;
 }
 
-#nd-docs-layout .ao-install-downloads__steps {
-	display: grid;
-	grid-template-columns: repeat(3, minmax(0, 1fr));
-	gap: 0.65rem;
-	margin: 0;
-	padding: 0.85rem 1rem 0.15rem;
-	list-style: none;
-}
-
-#nd-docs-layout .ao-install-downloads__step {
-	display: grid;
-	grid-template-columns: auto minmax(0, 1fr);
-	gap: 0.65rem;
-	align-items: flex-start;
-	min-width: 0;
-	padding: 0.85rem;
-	border: 1px solid var(--color-border-subtle);
-	border-radius: 9px;
-	background: color-mix(in srgb, var(--color-fd-card) 78%, var(--color-bg-elevated));
-}
-
-#nd-docs-layout .ao-install-downloads__step-index {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	width: 1.45rem;
-	height: 1.45rem;
-	border: 1px solid var(--docs-accent-border);
-	border-radius: 999px;
-	background: var(--docs-accent-dim);
-	color: var(--docs-accent);
-	font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
-	font-size: 0.75rem;
-	font-weight: 700;
-	line-height: 1;
-}
-
-#nd-docs-layout .ao-install-downloads__step-copy {
-	display: flex;
-	min-width: 0;
-	flex-direction: column;
-	gap: 0.18rem;
-}
-
-#nd-docs-layout .ao-install-downloads__step-title {
-	color: var(--color-text-primary);
-	font-size: 0.875rem;
-	font-weight: 680;
-	line-height: 1.35;
-}
-
-#nd-docs-layout .ao-install-downloads__step-body {
-	color: var(--color-text-tertiary);
-	font-size: 0.78rem;
-	line-height: 1.5;
-}
-
 #nd-docs-layout .ao-install-downloads__grid {
 	display: grid;
 	grid-template-columns: repeat(2, minmax(0, 1fr));
 	gap: 0.6rem;
-	padding: 0.85rem 1rem;
 }
 
 #nd-docs-layout .prose a.ao-install-downloads__item {
@@ -616,10 +527,10 @@ pre.shiki code {
 	align-items: center;
 	gap: 0.75rem;
 	min-width: 0;
-	padding: 0.82rem 0.85rem;
+	padding: 0.9rem;
 	border: 1px solid var(--color-border-subtle);
-	border-radius: 9px;
-	background: color-mix(in srgb, var(--color-fd-card) 82%, var(--color-bg-elevated));
+	border-radius: 8px;
+	background: color-mix(in srgb, var(--color-fd-card) 92%, var(--color-bg-elevated));
 	color: var(--color-text-primary);
 	text-decoration: none;
 	transition:
@@ -656,7 +567,7 @@ pre.shiki code {
 #nd-docs-layout .ao-install-downloads__platform {
 	overflow: hidden;
 	color: var(--color-text-primary);
-	font-size: 0.91rem;
+	font-size: 0.94rem;
 	font-weight: 650;
 	line-height: 1.25;
 	text-overflow: ellipsis;
@@ -672,32 +583,22 @@ pre.shiki code {
 	white-space: nowrap;
 }
 
-#nd-docs-layout .ao-install-downloads__hint {
-	display: block;
-	margin-top: 0.24rem;
-	color: var(--color-text-secondary);
-	font-size: 0.76rem;
-	line-height: 1.35;
-	white-space: normal;
-}
-
 #nd-docs-layout .ao-install-downloads__type {
 	display: inline-flex;
 	align-items: center;
 	min-width: max-content;
-	padding: 0.18rem 0.45rem;
+	padding: 0.28rem 0.55rem;
 	border: 1px solid var(--docs-accent-border);
-	border-radius: 999px;
+	border-radius: 7px;
 	background: var(--docs-accent-dim);
 	color: var(--docs-accent);
-	font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
-	font-size: 0.72rem;
+	font-size: 0.76rem;
 	font-weight: 650;
 	line-height: 1.3;
 }
 
 #nd-docs-layout .ao-install-downloads__note {
-	padding: 0 1.15rem 1rem;
+	margin-top: 0.75rem;
 	color: var(--color-text-secondary);
 	font-size: 0.86rem;
 	line-height: 1.55;
@@ -819,14 +720,9 @@ pre.shiki code {
 		width: fit-content;
 	}
 
-	#nd-docs-layout .ao-install-downloads__steps {
-		grid-template-columns: 1fr;
-	}
-
 	#nd-docs-layout .ao-install-downloads__grid {
 		grid-template-columns: 1fr;
 	}
-
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
