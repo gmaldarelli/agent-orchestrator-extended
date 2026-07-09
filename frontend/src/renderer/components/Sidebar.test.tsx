@@ -128,13 +128,17 @@ function codedError(message: string, code: "NOT_A_GIT_REPO" | "PROJECT_UNBORN") 
 	return error;
 }
 
-async function openProjectAgentDialog(path = "/repo/new-project") {
+function setupConfirmMessage(path: string) {
+	return `Set up Git for ${path}? AO will initialize Git if needed, stage this folder's files, and create the first commit before importing it.`;
+}
+
+async function openCreateProjectDialog(path = "/repo/new-project") {
 	const user = userEvent.setup();
 	window.ao!.app.chooseDirectory = vi.fn().mockResolvedValue(path);
 	await user.click(screen.getByLabelText("New project"));
 	await user.click(screen.getByRole("button", { name: /^Project/i }));
 	await user.click(await screen.findByRole("button", { name: /Choose a project folder/i }));
-	expect(await screen.findByText(path)).toBeInTheDocument();
+	await screen.findByText(path);
 	await chooseOption(screen.getByRole("combobox", { name: "Worker agent" }), "Codex");
 	await chooseOption(screen.getByRole("combobox", { name: "Orchestrator agent" }), "Claude Code");
 	return user;
@@ -234,16 +238,17 @@ describe("Sidebar", () => {
 		await user.click(screen.getByRole("button", { name: "Create and start" }));
 
 		await waitFor(() =>
-			expect(onCreateProject).toHaveBeenCalledWith({
-				path: "/repo/new-project",
-				workerAgent: "codex",
-				orchestratorAgent: "claude-code",
-				asWorkspace: false,
-			}),
+			expect(onCreateProject).toHaveBeenCalledWith(
+				expect.objectContaining({
+					path: "/repo/new-project",
+					workerAgent: "codex",
+					orchestratorAgent: "claude-code",
+				}),
+			),
 		);
 	});
 
-	it("initializes non-git project folders and retries creation", async () => {
+	it("confirms repository initialization recovery for non-git folders and retries project creation", async () => {
 		const onCreateProject = vi
 			.fn()
 			.mockRejectedValueOnce(
@@ -255,11 +260,15 @@ describe("Sidebar", () => {
 			.mockResolvedValueOnce(undefined) as unknown as CreateProjectHandler;
 		const onInitializeProject = vi.fn().mockResolvedValue(undefined) as InitializeProjectHandler;
 		renderSidebar({ onCreateProject, onInitializeProject });
-		const user = await openProjectAgentDialog();
+		const user = await openCreateProjectDialog();
 
 		await user.click(screen.getByRole("button", { name: "Create and start" }));
 
+		await waitFor(() => expect(window.confirm).toHaveBeenCalledWith(setupConfirmMessage("/repo/new-project")));
 		await waitFor(() => expect(onInitializeProject).toHaveBeenCalledWith("/repo/new-project"));
+		expect(screen.queryByRole("button", { name: "Yes" })).not.toBeInTheDocument();
+		expect(screen.queryByLabelText("Manual Git setup")).not.toBeInTheDocument();
+
 		await waitFor(() => expect(onCreateProject).toHaveBeenCalledTimes(2));
 		expect(onCreateProject).toHaveBeenLastCalledWith(
 			expect.objectContaining({
@@ -269,46 +278,59 @@ describe("Sidebar", () => {
 				asWorkspace: false,
 			}),
 		);
-		expect(screen.queryByRole("button", { name: "Yes" })).not.toBeInTheDocument();
-		expect(screen.queryByLabelText("Manual Git setup")).not.toBeInTheDocument();
 	});
 
-	it("initializes git project folders with no commits and retries creation", async () => {
+	it("shows repository initialization recovery for git repos with no commits", async () => {
 		const onCreateProject = vi
 			.fn()
 			.mockRejectedValueOnce(codedError("This repo has no commits yet.", "PROJECT_UNBORN"))
 			.mockResolvedValueOnce(undefined) as unknown as CreateProjectHandler;
 		const onInitializeProject = vi.fn().mockResolvedValue(undefined) as InitializeProjectHandler;
 		renderSidebar({ onCreateProject, onInitializeProject });
-		const user = await openProjectAgentDialog("/repo/unborn");
+		const user = await openCreateProjectDialog("/repo/unborn");
 
 		await user.click(screen.getByRole("button", { name: "Create and start" }));
 
+		await waitFor(() => expect(window.confirm).toHaveBeenCalledWith(setupConfirmMessage("/repo/unborn")));
 		await waitFor(() => expect(onInitializeProject).toHaveBeenCalledWith("/repo/unborn"));
 		await waitFor(() => expect(onCreateProject).toHaveBeenCalledTimes(2));
+		expect(screen.queryByRole("button", { name: "Yes" })).not.toBeInTheDocument();
+		expect(screen.queryByLabelText("Manual Git setup")).not.toBeInTheDocument();
 	});
 
-	it("shows repository setup failures as user guidance", async () => {
+	it("does not initialize repository setup when confirmation is cancelled", async () => {
+		vi.mocked(window.confirm).mockReturnValue(false);
 		const onCreateProject = vi
 			.fn()
-			.mockRejectedValueOnce(codedError("This folder is not a Git repository.", "NOT_A_GIT_REPO"))
-			.mockResolvedValueOnce(undefined) as unknown as CreateProjectHandler;
-		const onInitializeProject = vi
-			.fn()
-			.mockRejectedValue(
-				new Error(
-					"Selected folder is inside a Git repository. Select the repository root instead. (PROJECT_PATH_NOT_REPO_ROOT)",
-				),
-			) as InitializeProjectHandler;
+			.mockRejectedValueOnce(
+				codedError("This folder is not a Git repository.", "NOT_A_GIT_REPO"),
+			) as unknown as CreateProjectHandler;
+		const onInitializeProject = vi.fn().mockResolvedValue(undefined) as InitializeProjectHandler;
 		renderSidebar({ onCreateProject, onInitializeProject });
-		const user = await openProjectAgentDialog("C:\\Users\\test\\repo\\subdir");
+		const user = await openCreateProjectDialog();
 
 		await user.click(screen.getByRole("button", { name: "Create and start" }));
 
-		expect(await screen.findByRole("alert")).toHaveTextContent("Select the repository root");
-		expect(screen.getByText(/Choose the top-level folder and try again/)).toBeInTheDocument();
-		expect(screen.queryByText(/Setup failed/)).not.toBeInTheDocument();
-		expect(screen.queryByText(/PROJECT_PATH_NOT_REPO_ROOT/)).not.toBeInTheDocument();
+		await waitFor(() => expect(window.confirm).toHaveBeenCalledWith(setupConfirmMessage("/repo/new-project")));
+		expect(onInitializeProject).not.toHaveBeenCalled();
+		expect(onCreateProject).toHaveBeenCalledTimes(1);
+	});
+
+	it("surfaces repository initialization failures", async () => {
+		const onCreateProject = vi
+			.fn()
+			.mockRejectedValueOnce(
+				codedError("This folder is not a Git repository.", "NOT_A_GIT_REPO"),
+			) as unknown as CreateProjectHandler;
+		const onInitializeProject = vi.fn().mockRejectedValue(new Error("git init failed")) as InitializeProjectHandler;
+		renderSidebar({ onCreateProject, onInitializeProject });
+		const user = await openCreateProjectDialog();
+
+		await user.click(screen.getByRole("button", { name: "Create and start" }));
+
+		await waitFor(() => expect(window.confirm).toHaveBeenCalledWith(setupConfirmMessage("/repo/new-project")));
+		expect((await screen.findAllByText("Repository setup failed")).length).toBeGreaterThan(0);
+		expect(screen.getByText("git init failed")).toBeInTheDocument();
 	});
 
 	it("can create a workspace project from the project add flow", async () => {
@@ -337,6 +359,36 @@ describe("Sidebar", () => {
 				asWorkspace: true,
 			}),
 		);
+	});
+
+	it("does not run single-repo Git setup recovery for workspace imports", async () => {
+		const user = userEvent.setup();
+		const onCreateProject = vi
+			.fn()
+			.mockRejectedValueOnce(
+				codedError("This folder is not a Git repository.", "NOT_A_GIT_REPO"),
+			) as unknown as CreateProjectHandler;
+		const onInitializeProject = vi.fn().mockResolvedValue(undefined) as InitializeProjectHandler;
+		window.ao!.app.chooseDirectory = vi.fn().mockResolvedValue("/repo/workspace");
+		window.ao!.app.scanImportFolder = vi.fn().mockResolvedValue({ path: "/repo/workspace", repos: [] });
+		renderSidebar({ onCreateProject, onInitializeProject });
+
+		await user.click(screen.getByLabelText("New project"));
+		await user.click(screen.getByRole("button", { name: /^Workspace/i }));
+		await user.click(await screen.findByRole("button", { name: /Choose a folder/i }));
+		await screen.findByRole("dialog", { name: "Workspace agents" });
+		await chooseOption(screen.getByRole("combobox", { name: "Worker agent" }), "Codex");
+		await chooseOption(screen.getByRole("combobox", { name: "Orchestrator agent" }), "Claude Code");
+		await user.click(screen.getByRole("button", { name: "Create workspace and start" }));
+
+		await waitFor(() => expect(onCreateProject).toHaveBeenCalledTimes(1));
+		expect(window.confirm).not.toHaveBeenCalledWith(setupConfirmMessage("/repo/workspace"));
+		expect(onInitializeProject).not.toHaveBeenCalled();
+		expect(await screen.findByText(/Import failed · workspace not registered/i)).toBeInTheDocument();
+		expect(window.ao!.app.scanImportFolder).toHaveBeenCalledWith({
+			path: "/repo/workspace",
+			mode: "workspace",
+		});
 	});
 
 	it("shows detected repository validation when workspace import fails", async () => {
