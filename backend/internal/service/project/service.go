@@ -351,8 +351,8 @@ func validateRepositorySetupPathSafety(path string) error {
 		return unsafeRepositorySetupPathError(path, "filesystem root")
 	}
 
-	home, err := os.UserHomeDir()
-	if err != nil || strings.TrimSpace(home) == "" {
+	home, _ := os.UserHomeDir()
+	if strings.TrimSpace(home) == "" {
 		return nil
 	}
 	home = comparablePath(home)
