@@ -21,6 +21,11 @@ import { NewTaskDialog } from "./NewTaskDialog";
 import { cn } from "../lib/utils";
 
 const isMac = typeof navigator !== "undefined" && /Mac|iPod|iPhone|iPad/.test(navigator.userAgent);
+const isLinux =
+	typeof navigator !== "undefined" &&
+	((navigator as Navigator & { userAgentData?: { platform?: string } }).userAgentData?.platform ?? navigator.platform)
+		.toLowerCase()
+		.includes("linux");
 const dragStyle = isMac ? ({ WebkitAppRegion: "drag" } as React.CSSProperties) : undefined;
 const noDragStyle = isMac ? ({ WebkitAppRegion: "no-drag" } as React.CSSProperties) : undefined;
 
@@ -77,6 +82,10 @@ export function ShellTopbar() {
 	const orchestrator = projectId ? findProjectOrchestrator(all, projectId) : undefined;
 	const isProjectRestarting = projectId ? restartingProjectIds.has(projectId) : false;
 
+	if (isLinux && !isSessionRoute) {
+		return null;
+	}
+
 	const openBoard = () =>
 		projectId ? void navigate({ to: "/projects/$projectId", params: { projectId } }) : void navigate({ to: "/" });
 
@@ -112,7 +121,7 @@ export function ShellTopbar() {
 		}
 		setIsSpawning(true);
 		try {
-			const sessionId = await spawnOrchestrator(projectId);
+			const sessionId = await spawnOrchestrator(projectId, "topbar");
 			await queryClient.invalidateQueries({ queryKey: workspaceQueryKey });
 			void navigate({
 				to: "/projects/$projectId/sessions/$sessionId",
@@ -165,7 +174,7 @@ export function ShellTopbar() {
 			<div className="dashboard-app-header__spacer" />
 
 			<div className="dashboard-app-header__actions">
-				<NotificationCenter style={noDragStyle} />
+				{!isLinux ? <NotificationCenter style={noDragStyle} /> : null}
 				{isSessionRoute ? (
 					<>
 						{isOrchestrator ? (
@@ -195,7 +204,22 @@ export function ShellTopbar() {
 						) : null}
 						{/* Kill control sits beside the orchestrator link for active workers —
 						    moved here from the inspector's Summary "Danger zone". */}
-						{!isOrchestrator && session && sessionIsActive(session) ? <TopbarKillButton session={session} /> : null}
+						{!isOrchestrator && session && sessionIsActive(session) ? (
+							<TopbarKillButton
+								session={session}
+								orchestratorId={orchestrator?.id}
+								onKilled={(workspaceId, orchestratorId) => {
+									if (orchestratorId) {
+										void navigate({
+											to: "/projects/$projectId/sessions/$sessionId",
+											params: { projectId: workspaceId, sessionId: orchestratorId },
+										});
+										return;
+									}
+									void navigate({ to: "/projects/$projectId", params: { projectId: workspaceId } });
+								}}
+							/>
+						) : null}
 						{!isOrchestrator && (
 							<button
 								aria-label="Open orchestrator"
@@ -245,23 +269,37 @@ export function ShellTopbar() {
 // button arms a one-step confirmation before firing POST /sessions/{id}/kill,
 // then invalidates the workspace query so the session drops into the board's
 // terminated group.
-export function TopbarKillButton({ session }: { session: WorkspaceSession }) {
+export function TopbarKillButton({
+	session,
+	orchestratorId,
+	onKilled,
+}: {
+	session: WorkspaceSession;
+	orchestratorId?: string;
+	onKilled: (workspaceId: string, orchestratorId?: string) => void;
+}) {
 	const queryClient = useQueryClient();
 	const [confirming, setConfirming] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 
 	const kill = useMutation({
 		mutationFn: async () => {
+			void captureRendererEvent("ao.renderer.session_kill_requested", { project_id: session.workspaceId });
 			const { error: apiError } = await apiClient.POST("/api/v1/sessions/{sessionId}/kill", {
 				params: { path: { sessionId: session.id } },
 			});
 			if (apiError) throw new Error(apiErrorMessage(apiError));
 		},
 		onSuccess: () => {
+			void captureRendererEvent("ao.renderer.session_kill_succeeded", { project_id: session.workspaceId });
 			setConfirming(false);
 			void queryClient.invalidateQueries({ queryKey: workspaceQueryKey });
+			onKilled(session.workspaceId, orchestratorId);
 		},
-		onError: (e) => setError(e instanceof Error ? e.message : "Kill failed"),
+		onError: (e) => {
+			void captureRendererEvent("ao.renderer.session_kill_failed", { project_id: session.workspaceId });
+			setError(e instanceof Error ? e.message : "Kill failed");
+		},
 	});
 
 	if (confirming) {
