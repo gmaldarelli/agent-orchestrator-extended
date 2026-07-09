@@ -12,7 +12,6 @@ import { canonicalTrackerIssueId, sortedPRs } from "../types/workspace";
 import { BrowserPanelView } from "./BrowserPanel";
 import type { BrowserViewModel } from "../hooks/useBrowserView";
 import { Badge } from "./ui/badge";
-import { Button } from "./ui/button";
 import { cn } from "../lib/utils";
 import { PRSummaryMeta, PRSummaryParts } from "./PRSummaryDisplay";
 
@@ -59,6 +58,8 @@ const VIEWS: { id: InspectorView; label: string; icon: ReactNode }[] = [
 		),
 	},
 ];
+
+const usePreviewData = import.meta.env.VITE_NO_ELECTRON === "1";
 
 const prStateTone: Record<SessionPRSummary["state"], string> = {
 	open: "border-success/40 bg-success/10 text-success",
@@ -421,6 +422,7 @@ function ReviewsView({
 			return reviews.some((review) => review.status === "running") ? 2500 : false;
 		},
 		queryFn: async () => {
+			if (usePreviewData) return mockReviewsResponse(session);
 			const { data, error } = await apiClient.GET("/api/v1/sessions/{sessionId}/reviews", {
 				params: { path: { sessionId: session.id } },
 			});
@@ -432,6 +434,7 @@ function ReviewsView({
 		queryKey: ["project-config", session.workspaceId],
 		enabled: hasPr,
 		queryFn: async () => {
+			if (usePreviewData) return mockProjectConfig();
 			const { data, error } = await apiClient.GET("/api/v1/projects/{id}", {
 				params: { path: { id: session.workspaceId } },
 			});
@@ -489,6 +492,76 @@ function ReviewsView({
 function projectConfig(project: components["schemas"]["ProjectOrDegraded"] | undefined): ProjectConfig | undefined {
 	if (!project || !("config" in project)) return undefined;
 	return project.config;
+}
+
+function mockProjectConfig(): ProjectConfig {
+	return {
+		worker: { agent: "codex" },
+		orchestrator: { agent: "codex" },
+		reviewers: [{ harness: "codex" }],
+	};
+}
+
+function mockReviewsResponse(session: WorkspaceSession): ReviewsResponse {
+	return {
+		reviewerHandleId: `${session.id}-reviewer`,
+		reviews: sortedPRs(session).map((pr, index) => {
+			const targetSha = `demo${pr.number}${index}`;
+			const reviewedAt = new Date(Date.now() - (index + 1) * 11 * 60 * 1000).toISOString();
+			const latestRun =
+				pr.review === "approved" || pr.review === "changes_requested"
+					? {
+							batchId: `demo-batch-${session.id}`,
+							body:
+								pr.review === "approved"
+									? "Demo review approved. The implementation is ready for the README screenshot flow."
+									: "Demo review found polish feedback for the terminal presentation.",
+							createdAt: reviewedAt,
+							githubReviewId: `${pr.number}01`,
+							harness: "codex",
+							id: `demo-review-run-${pr.number}`,
+							prUrl: pr.url,
+							reviewId: `demo-review-${pr.number}`,
+							sessionId: session.id,
+							status: "delivered",
+							targetSha,
+							verdict: pr.review === "approved" ? "approved" : "changes_requested",
+						}
+					: undefined;
+			return {
+				latestRun,
+				prNumber: pr.number,
+				prUrl: pr.url,
+				status:
+					pr.review === "approved"
+						? "up_to_date"
+						: pr.review === "changes_requested"
+							? "changes_requested"
+							: pr.state === "draft"
+								? "ineligible"
+								: "needs_review",
+				targetSha,
+				title: mockReviewTitle(pr.number),
+			};
+		}),
+	};
+}
+
+function mockReviewTitle(prNumber: number): string {
+	switch (prNumber) {
+		case 319:
+			return "Browser preview rail renders inside AO";
+		case 320:
+			return "Review tab keeps stacked PR rows visible";
+		case 321:
+			return "Draft child PR waits for parent review";
+		case 318:
+			return "Terminal polish feedback";
+		case 323:
+			return "README screenshot assets ready";
+		default:
+			return `Demo pull request ${prNumber}`;
+	}
 }
 
 function ReviewPanel({
@@ -672,17 +745,12 @@ function BrowserView({
 	onTogglePopOut?: (next: boolean) => void;
 	browserView?: BrowserViewModel;
 }) {
+	// While maximized, the browser is a full-window overlay that covers the rail,
+	// so the inspector's Browser tab has nothing to show (and must not mount a
+	// second BrowserPanelView — it would fight the overlay over the shared native
+	// view slot). Exit is via the overlay's own minimize button.
 	if (browserPoppedOut) {
-		return (
-			<div role="tabpanel">
-				<div className="inspector-empty inspector-empty--browser">
-					<p>Browser preview is in the center pane.</p>
-					<Button onClick={() => onTogglePopOut?.(false)} size="sm" type="button" variant="outline">
-						Return to panel
-					</Button>
-				</div>
-			</div>
-		);
+		return null;
 	}
 
 	if (!browserView) {

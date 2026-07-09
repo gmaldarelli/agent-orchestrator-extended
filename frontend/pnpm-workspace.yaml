@@ -1,6 +1,7 @@
 nodeLinker: hoisted
 
 allowBuilds:
+  core-js: false
   electron: true
   electron-winstaller: true
 
