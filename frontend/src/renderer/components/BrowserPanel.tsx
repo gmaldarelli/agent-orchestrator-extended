@@ -53,7 +53,7 @@ export function BrowserPanelView({
 
 	return (
 		<div
-			className="flex h-full min-h-browser-min flex-col overflow-hidden rounded-lg border border-border bg-background"
+			className="flex h-full w-full min-w-0 min-h-browser-min flex-col overflow-hidden rounded-lg border border-border bg-background"
 			role="tabpanel"
 		>
 			<form
@@ -120,7 +120,7 @@ export function BrowserPanelView({
 					)}
 				</Button>
 			</form>
-			<div className="relative min-h-0 flex-1 overflow-hidden bg-background">
+			<div className="relative min-h-0 flex-1 overflow-hidden bg-background" data-browser-view-clip>
 				<div className="absolute inset-0 min-h-px min-w-px" ref={slotRef} />
 				{showStaticPreview ? <StaticPreview url={navState.url} /> : null}
 				{navState.url === "" ? (

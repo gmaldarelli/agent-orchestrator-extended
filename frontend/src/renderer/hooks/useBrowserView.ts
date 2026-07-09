@@ -59,9 +59,12 @@ const HIDDEN_RECT: BrowserRect = { x: 0, y: 0, width: 0, height: 0 };
 function visibleSlotRect(node: HTMLElement): BrowserRect {
 	const rect = node.getBoundingClientRect();
 	let { left, top, right, bottom } = rect;
-	const column = node.closest<HTMLElement>("[data-panel]");
-	if (column) {
-		const bounds = column.getBoundingClientRect();
+	const clips: HTMLElement[] = [];
+	for (let current = node.parentElement; current; current = current.parentElement) {
+		if (current.hasAttribute("data-browser-view-clip") || current.hasAttribute("data-panel")) clips.push(current);
+	}
+	for (const clip of clips) {
+		const bounds = clip.getBoundingClientRect();
 		left = Math.max(left, bounds.left);
 		top = Math.max(top, bounds.top);
 		right = Math.min(right, bounds.right);
@@ -87,7 +90,7 @@ export function useBrowserView({
 	const settleTimerRef = useRef<number | null>(null);
 	const observerRef = useRef<ResizeObserver | null>(null);
 	const previewTriggerRef = useRef<{ revision: number | null; target: string } | null>(null);
-	const hasUrlRef = useRef(false);
+	const shouldShowNativeRef = useRef(false);
 	const hasNativeBrowser = Boolean(window.ao?.browser);
 
 	useEffect(() => {
@@ -95,8 +98,8 @@ export function useBrowserView({
 	}, [active]);
 
 	useEffect(() => {
-		hasUrlRef.current = Boolean(navState.url);
-	}, [navState.url]);
+		shouldShowNativeRef.current = Boolean(navState.url && !navState.error && !navState.isLoading);
+	}, [navState.error, navState.isLoading, navState.url]);
 
 	const sendHiddenBounds = useCallback((id = viewIdRef.current) => {
 		if (!id) return;
@@ -108,7 +111,7 @@ export function useBrowserView({
 		const id = viewIdRef.current;
 		const node = slotNodeRef.current;
 		if (!id) return;
-		if (!activeRef.current || !node || !node.isConnected || !hasUrlRef.current) {
+		if (!activeRef.current || !node || !node.isConnected || !shouldShowNativeRef.current) {
 			sendHiddenBounds(id);
 			return;
 		}
@@ -168,6 +171,9 @@ export function useBrowserView({
 				// through the whole animation so the view never lags behind.
 				const column = node.closest("[data-panel]");
 				if (column) observer.observe(column);
+				for (let current = node.parentElement; current; current = current.parentElement) {
+					if (current.hasAttribute("data-browser-view-clip")) observer.observe(current);
+				}
 				observerRef.current = observer;
 			}
 			scheduleMeasure();
@@ -217,12 +223,12 @@ export function useBrowserView({
 	}, []);
 
 	useEffect(() => {
-		if (navState.url && active) {
+		if (navState.url && active && !navState.error && !navState.isLoading) {
 			scheduleSettleMeasure();
 		} else {
 			sendHiddenBounds();
 		}
-	}, [active, navState.url, poppedOut, scheduleSettleMeasure, sendHiddenBounds]);
+	}, [active, navState.error, navState.isLoading, navState.url, poppedOut, scheduleSettleMeasure, sendHiddenBounds]);
 
 	useEffect(() => {
 		const handle = () => scheduleMeasure();
@@ -256,9 +262,12 @@ export function useBrowserView({
 				}));
 				return Promise.resolve();
 			}
-			return withView((id) => window.ao!.browser.navigate({ viewId: id, url }));
+			scheduleSettleMeasure();
+			return withView((id) => window.ao!.browser.navigate({ viewId: id, url })).finally(() => {
+				scheduleSettleMeasure();
+			});
 		},
-		[hasNativeBrowser, withView],
+		[hasNativeBrowser, scheduleSettleMeasure, withView],
 	);
 
 	const clear = useCallback(() => {

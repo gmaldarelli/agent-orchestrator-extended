@@ -181,8 +181,21 @@ export function createBrowserViewHost(options: BrowserViewHostOptions): BrowserV
 		if (!isAllowedBrowserURL(normalized.href, options.rendererOrigin)) {
 			throw new Error("Unsupported browser URL");
 		}
-		await entry.view.webContents.loadURL(normalized.href);
-		return pushNavState(options, entry);
+		try {
+			await entry.view.webContents.loadURL(normalized.href);
+			return pushNavState(options, entry);
+		} catch (error) {
+			entry.view.setVisible?.(false);
+			entry.view.setBounds(OFFSCREEN_BOUNDS);
+			entry.state = {
+				...readNavState(entry),
+				url: normalized.href,
+				error: error instanceof Error ? error.message : "Unable to load page",
+				isLoading: false,
+			};
+			options.mainWindow.webContents.send("browser:navState", entry.state);
+			return entry.state;
+		}
 	};
 
 	// clear resets the view to a blank page (`ao preview clear`). about:blank is
@@ -212,10 +225,21 @@ export function createBrowserViewHost(options: BrowserViewHostOptions): BrowserV
 		entry.view.webContents.close?.();
 	};
 
-	const invokeNav = (viewId: string, action: (contents: BrowserWebContents) => void): BrowserNavState => {
+	const invokeNav = (
+		viewId: string,
+		action: (contents: BrowserWebContents) => void,
+		navOptions?: { preserveLoadError?: boolean },
+	): BrowserNavState => {
 		const entry = entries.get(viewId);
 		if (!entry) return emptyNavState(viewId);
 		action(entry.view.webContents);
+		if (navOptions?.preserveLoadError && entry.state.error) {
+			const next = readNavState(entry);
+			if (next.url === entry.state.url) {
+				entry.state = { ...next, error: entry.state.error };
+				return entry.state;
+			}
+		}
 		return pushNavState(options, entry);
 	};
 
@@ -238,7 +262,9 @@ export function createBrowserViewHost(options: BrowserViewHostOptions): BrowserV
 	handle("browser:goBack", (_event, viewId: string) => invokeNav(viewId, (contents) => contents.goBack()));
 	handle("browser:goForward", (_event, viewId: string) => invokeNav(viewId, (contents) => contents.goForward()));
 	handle("browser:reload", (_event, viewId: string) => invokeNav(viewId, (contents) => contents.reload()));
-	handle("browser:stop", (_event, viewId: string) => invokeNav(viewId, (contents) => contents.stop()));
+	handle("browser:stop", (_event, viewId: string) =>
+		invokeNav(viewId, (contents) => contents.stop(), { preserveLoadError: true }),
+	);
 	on("browser:destroy", (_event, viewId: string) => destroy(viewId));
 
 	return {
@@ -323,15 +349,21 @@ function hardenWebContents(contents: BrowserWebContents, options: BrowserViewHos
 }
 
 function wireNavEvents(contents: BrowserWebContents, options: BrowserViewHostOptions, entry: BrowserEntry): void {
-	const update = () => {
+	const update = (preserveLoadError = false) => {
+		if (preserveLoadError && entry.state.error) {
+			const next = readNavState(entry);
+			if (next.url === entry.state.url) return;
+		}
 		pushNavState(options, entry);
 	};
-	contents.on("did-navigate", update);
-	contents.on("did-navigate-in-page", update);
-	contents.on("page-title-updated", update);
-	contents.on("did-start-loading", update);
-	contents.on("did-stop-loading", update);
+	contents.on("did-navigate", () => update());
+	contents.on("did-navigate-in-page", () => update());
+	contents.on("page-title-updated", () => update());
+	contents.on("did-start-loading", () => update());
+	contents.on("did-stop-loading", () => update(true));
 	contents.on("did-fail-load", (_event, _errorCode, errorDescription) => {
+		entry.view.setVisible?.(false);
+		entry.view.setBounds(OFFSCREEN_BOUNDS);
 		entry.state = { ...readNavState(entry), error: String(errorDescription || "Unable to load page") };
 		options.mainWindow.webContents.send("browser:navState", entry.state);
 	});

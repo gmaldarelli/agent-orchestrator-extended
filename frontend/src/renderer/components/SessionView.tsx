@@ -209,21 +209,23 @@ export function SessionView({ sessionId }: SessionViewProps) {
 							panelRef={inspectorRef}
 							style={{ overflow: "hidden" }}
 						>
-							{/* Stable content width while the panel animates (yyork pattern):
-                  the pane clips instead of reflowing the inspector mid-collapse. */}
-							<div className="h-full min-w-inspector-min">
-								<SessionInspector
-									browserPoppedOut={browserPoppedOut}
-									isInspectorVisible={isInspectorOpen}
-									onOpenReviewerTerminal={({ handleId, harness }) =>
-										setTerminalTarget({ kind: "reviewer", handleId, harness })
-									}
-									onToggleBrowserPopOut={setBrowserPoppedOut}
-									onViewChange={setInspectorView}
-									view={inspectorView}
-									browserView={browserView}
-									session={session}
-								/>
+							<div className="h-full w-full min-w-0 overflow-hidden" data-browser-view-clip>
+								{/* Stable content width while the panel animates (yyork pattern):
+	                  the pane clips instead of reflowing the inspector mid-collapse. */}
+								<div className="h-full min-w-inspector-min">
+									<SessionInspector
+										browserPoppedOut={browserPoppedOut}
+										isInspectorVisible={isInspectorOpen}
+										onOpenReviewerTerminal={({ handleId, harness }) =>
+											setTerminalTarget({ kind: "reviewer", handleId, harness })
+										}
+										onToggleBrowserPopOut={setBrowserPoppedOut}
+										onViewChange={setInspectorView}
+										view={inspectorView}
+										browserView={browserView}
+										session={session}
+									/>
+								</div>
 							</div>
 						</ResizablePanel>
 					</>

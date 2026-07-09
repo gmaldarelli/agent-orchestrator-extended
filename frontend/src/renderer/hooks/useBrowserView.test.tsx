@@ -35,14 +35,16 @@ function setupBridge() {
 				isLoading: false,
 			};
 		},
-		ensure: vi.fn(async (sessionId: string): Promise<BrowserNavState> => ({
-			viewId: `42:${sessionId}`,
-			url: "",
-			title: "",
-			canGoBack: false,
-			canGoForward: false,
-			isLoading: false,
-		})),
+		ensure: vi.fn(
+			async (sessionId: string): Promise<BrowserNavState> => ({
+				viewId: `42:${sessionId}`,
+				url: "",
+				title: "",
+				canGoBack: false,
+				canGoForward: false,
+				isLoading: false,
+			}),
+		),
 		setBounds: vi.fn(),
 		navigate: vi.fn(async ({ viewId }: { viewId: string }) => bridge.stateFor(viewId)),
 		clear: vi.fn(async (viewId: string) => bridge.stateFor(viewId)),
@@ -139,6 +141,73 @@ describe("useBrowserView", () => {
 			expect(bridge.setBounds).toHaveBeenCalledWith({
 				viewId: "42:sess-1",
 				rect: { x: 100, y: 34, width: 150, height: 240 },
+				visible: true,
+			}),
+		);
+	});
+
+	it("clamps the native view to every browser clip boundary", async () => {
+		const bridge = setupBridge();
+		const outerClip = document.createElement("div");
+		outerClip.setAttribute("data-browser-view-clip", "");
+		outerClip.getBoundingClientRect = vi.fn(() => ({
+			x: 1500,
+			y: 200,
+			width: 420,
+			height: 906,
+			top: 200,
+			right: 1920,
+			bottom: 1106,
+			left: 1500,
+			toJSON: () => ({}),
+		}));
+		const clip = document.createElement("div");
+		clip.setAttribute("data-browser-view-clip", "");
+		clip.getBoundingClientRect = vi.fn(() => ({
+			x: 1440,
+			y: 206,
+			width: 480,
+			height: 900,
+			top: 206,
+			right: 1920,
+			bottom: 1106,
+			left: 1440,
+			toJSON: () => ({}),
+		}));
+		const slot = createSlot({
+			x: 1320,
+			y: 242,
+			width: 432,
+			height: 862,
+			top: 242,
+			right: 1752,
+			bottom: 1104,
+			left: 1320,
+		});
+		const stableWidthWrapper = document.createElement("div");
+		stableWidthWrapper.appendChild(slot);
+		clip.appendChild(stableWidthWrapper);
+		outerClip.appendChild(clip);
+		document.body.appendChild(outerClip);
+
+		const { result } = renderHook(() => useBrowserView({ sessionId: "sess-1", active: true, poppedOut: false }));
+		await waitFor(() => expect(bridge.ensure).toHaveBeenCalledWith("sess-1"));
+		act(() =>
+			bridge.emit({
+				viewId: "42:sess-1",
+				url: "http://localhost:3000/",
+				title: "",
+				canGoBack: false,
+				canGoForward: false,
+				isLoading: false,
+			}),
+		);
+		act(() => result.current.slotRef(slot));
+
+		await waitFor(() =>
+			expect(bridge.setBounds).toHaveBeenCalledWith({
+				viewId: "42:sess-1",
+				rect: { x: 1500, y: 242, width: 252, height: 862 },
 				visible: true,
 			}),
 		);

@@ -32,8 +32,8 @@ function setupHost() {
 	};
 	const view = {
 		webContents,
-		setBounds: () => undefined,
-		setVisible: () => undefined,
+		setBounds: vi.fn(),
+		setVisible: vi.fn(),
 	};
 	const handlers = new Map<string, InvokeHandler>();
 	const sent: BrowserNavState[] = [];
@@ -58,7 +58,7 @@ function setupHost() {
 	});
 	const invoke = (channel: string, ...args: unknown[]) =>
 		handlers.get(channel)!({ sender: { id: 1 } }, ...args) as Promise<BrowserNavState>;
-	return { host, invoke, webContents };
+	return { host, invoke, setCurrentURL: (url: string) => (currentURL = url), view, webContents };
 }
 
 describe("normalizeBrowserURL", () => {
@@ -111,6 +111,35 @@ describe("browser:clear", () => {
 
 		expect(webContents.loadURL).toHaveBeenLastCalledWith("about:blank");
 		expect(state.url).toBe("");
+	});
+});
+
+describe("browser:navigate", () => {
+	it("reports failed loads as an error state and hides the native view", async () => {
+		const { invoke, view, webContents } = setupHost();
+		await invoke("browser:ensure", "sess-1");
+		vi.mocked(webContents.loadURL).mockRejectedValueOnce(new Error("ERR_NAME_NOT_RESOLVED"));
+
+		const state = await invoke("browser:navigate", { viewId: "1:sess-1", url: "e" });
+
+		expect(state.url).toBe("https://e/");
+		expect(state.error).toContain("ERR_NAME_NOT_RESOLVED");
+		expect(view.setVisible).toHaveBeenLastCalledWith(false);
+	});
+
+	it("keeps the load error when stopping the failed page", async () => {
+		const { invoke, setCurrentURL, webContents } = setupHost();
+		await invoke("browser:ensure", "sess-1");
+		vi.mocked(webContents.loadURL).mockImplementationOnce(async (url: string) => {
+			setCurrentURL(url);
+			throw new Error("ERR_CONNECTION_REFUSED");
+		});
+		await invoke("browser:navigate", { viewId: "1:sess-1", url: "http://localhost:3000/" });
+
+		const state = await invoke("browser:stop", "1:sess-1");
+
+		expect(state.url).toBe("http://localhost:3000/");
+		expect(state.error).toContain("ERR_CONNECTION_REFUSED");
 	});
 });
 
