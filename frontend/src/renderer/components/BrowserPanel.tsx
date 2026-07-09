@@ -1,6 +1,8 @@
-import { useEffect, useState, type FormEvent } from "react";
-import { ArrowLeft, ArrowRight, Globe2, Maximize2, Minimize2, RefreshCw, X } from "lucide-react";
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
+import { ArrowLeft, ArrowRight, Globe2, Maximize2, Minimize2, MousePointer2, RefreshCw, X } from "lucide-react";
+import { apiClient, apiErrorMessage } from "../lib/api-client";
 import { useBrowserView, type BrowserViewModel } from "../hooks/useBrowserView";
+import { formatBrowserAnnotationMessage, type BrowserAnnotationSubmitPayload } from "../../shared/browser-annotations";
 import type { WorkspaceSession } from "../types/workspace";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
@@ -11,6 +13,8 @@ type BrowserPanelProps = {
 	poppedOut: boolean;
 	onTogglePopOut: (next: boolean) => void;
 };
+
+type AnnotationStatus = "idle" | "picking" | "queued" | "sending" | "sent" | "error";
 
 export function BrowserPanel({ session, active, poppedOut, onTogglePopOut }: BrowserPanelProps) {
 	const browserView = useBrowserView({
@@ -32,23 +36,178 @@ export function BrowserPanel({ session, active, poppedOut, onTogglePopOut }: Bro
 }
 
 export function BrowserPanelView({
+	session,
 	poppedOut,
 	onTogglePopOut,
 	browserView,
 }: BrowserPanelProps & { browserView: BrowserViewModel }) {
-	const { navState, slotRef, navigate, goBack, goForward, reload, stop } = browserView;
+	const { viewId, navState, slotRef, navigate, goBack, goForward, reload, stop, annotationMode, setAnnotationMode } =
+		browserView;
 	const [urlInput, setUrlInput] = useState(navState.url);
+	const [annotationStatus, setAnnotationStatus] = useState<AnnotationStatus>("idle");
+	const [annotationError, setAnnotationError] = useState("");
+	const [annotationQueuedCount, setAnnotationQueuedCount] = useState(0);
+	const annotationQueueRef = useRef<BrowserAnnotationSubmitPayload[]>([]);
+	const annotationSendingRef = useRef(false);
+	const annotationWaitingForAgentCycleRef = useRef(false);
+	const annotationSawAgentWorkingRef = useRef(false);
+	const sessionBusyRef = useRef(session.status === "working");
+	const sessionReadyForAnnotationRef = useRef(session.status === "needs_input");
 	const showStaticPreview = !window.ao?.browser && navState.url !== "";
+	const sessionBusy = session.status === "working";
+	const canAnnotate = Boolean(window.ao?.browser && viewId && navState.url);
 
 	useEffect(() => {
 		setUrlInput(navState.url);
 	}, [navState.url]);
+
+	useEffect(() => {
+		if (navState.url) return;
+		annotationQueueRef.current = [];
+		annotationWaitingForAgentCycleRef.current = false;
+		annotationSawAgentWorkingRef.current = false;
+		setAnnotationQueuedCount(0);
+		setAnnotationStatus("idle");
+		setAnnotationError("");
+	}, [navState.url]);
+
+	const setQueuedStatus = useCallback(() => {
+		const count = annotationQueueRef.current.length;
+		setAnnotationQueuedCount(count);
+		if (count > 0) setAnnotationStatus("queued");
+	}, []);
+
+	const drainAnnotationQueue = useCallback(() => {
+		if (
+			annotationSendingRef.current ||
+			!sessionReadyForAnnotationRef.current ||
+			annotationWaitingForAgentCycleRef.current
+		) {
+			return;
+		}
+
+		const payload = annotationQueueRef.current.shift();
+		setAnnotationQueuedCount(annotationQueueRef.current.length);
+		if (!payload) return;
+
+		annotationSendingRef.current = true;
+		setAnnotationStatus("sending");
+		setAnnotationError("");
+
+		void (async () => {
+			let sent = false;
+			try {
+				const message = formatBrowserAnnotationMessage(payload);
+				const { error } = await apiClient.POST("/api/v1/sessions/{sessionId}/send", {
+					params: { path: { sessionId: session.id } },
+					body: { message },
+				});
+				if (error) {
+					setAnnotationStatus("error");
+					setAnnotationError(apiErrorMessage(error, "Unable to send annotation."));
+					return;
+				}
+				sent = true;
+			} catch (error) {
+				setAnnotationStatus("error");
+				setAnnotationError(apiErrorMessage(error, "Unable to send annotation."));
+			} finally {
+				annotationSendingRef.current = false;
+				setAnnotationQueuedCount(annotationQueueRef.current.length);
+				if (!sent) return;
+
+				if (annotationQueueRef.current.length > 0) {
+					annotationWaitingForAgentCycleRef.current = true;
+					annotationSawAgentWorkingRef.current = sessionBusyRef.current;
+					setAnnotationStatus("queued");
+					return;
+				}
+
+				setAnnotationStatus("sent");
+			}
+		})();
+	}, [session.id]);
+
+	useEffect(() => {
+		const nextBusy = session.status === "working";
+		const nextReady = session.status === "needs_input";
+		sessionBusyRef.current = nextBusy;
+		sessionReadyForAnnotationRef.current = nextReady;
+		if (nextBusy) {
+			if (annotationWaitingForAgentCycleRef.current) {
+				annotationSawAgentWorkingRef.current = true;
+			}
+			return;
+		}
+		if (!nextReady) return;
+		if (annotationWaitingForAgentCycleRef.current) {
+			if (!annotationSawAgentWorkingRef.current) return;
+			annotationWaitingForAgentCycleRef.current = false;
+			annotationSawAgentWorkingRef.current = false;
+		}
+		drainAnnotationQueue();
+	}, [drainAnnotationQueue, session.status]);
+
+	const enqueueAnnotation = useCallback(
+		(payload: BrowserAnnotationSubmitPayload) => {
+			annotationQueueRef.current.push(payload);
+			setAnnotationError("");
+			setQueuedStatus();
+			drainAnnotationQueue();
+		},
+		[drainAnnotationQueue, setQueuedStatus],
+	);
+
+	useEffect(() => {
+		const offSubmit = window.ao?.browser.onAnnotationSubmit((payload) => {
+			if (payload.viewId !== viewId) return;
+			enqueueAnnotation(payload);
+		});
+		const offCancel = window.ao?.browser.onAnnotationCancel((payload) => {
+			if (payload.viewId !== viewId) return;
+			setQueuedStatus();
+			if (!annotationSendingRef.current && annotationQueueRef.current.length === 0) setAnnotationStatus("idle");
+			setAnnotationError("");
+		});
+		return () => {
+			offSubmit?.();
+			offCancel?.();
+		};
+	}, [enqueueAnnotation, setQueuedStatus, viewId]);
 
 	const submit = (event: FormEvent<HTMLFormElement>) => {
 		event.preventDefault();
 		const nextURL = urlInput.trim();
 		if (nextURL) void navigate(nextURL);
 	};
+
+	const toggleAnnotationMode = async () => {
+		if (!canAnnotate || annotationStatus === "sending") return;
+		const next = !(annotationMode || annotationStatus === "picking");
+		setAnnotationError("");
+		try {
+			await setAnnotationMode(next);
+			setAnnotationStatus(next ? "picking" : "idle");
+		} catch (error) {
+			setAnnotationStatus("error");
+			setAnnotationError(error instanceof Error ? error.message : "Unable to start annotation.");
+		}
+	};
+
+	const annotationStatusLabel =
+		annotationStatus === "picking"
+			? "Pick element"
+			: annotationStatus === "queued"
+				? annotationQueuedCount > 1
+					? `Queued (${annotationQueuedCount})`
+					: "Queued"
+				: annotationStatus === "sending"
+					? "Sending"
+					: annotationStatus === "sent"
+						? "Sent"
+						: annotationStatus === "error"
+							? annotationError
+							: "";
 
 	return (
 		<div className="browser-panel" role="tabpanel">
@@ -86,6 +245,32 @@ export function BrowserPanelView({
 						<RefreshCw aria-hidden="true" className="h-4 w-4" />
 					)}
 				</Button>
+				<Button
+					aria-label={annotationMode || annotationStatus === "picking" ? "Cancel annotation" : "Annotate page"}
+					aria-pressed={annotationMode || annotationStatus === "picking"}
+					className="browser-panel__annotate-btn"
+					disabled={!canAnnotate || annotationStatus === "sending"}
+					onClick={() => void toggleAnnotationMode()}
+					size="icon-sm"
+					title="Annotate page"
+					type="button"
+					variant="ghost"
+				>
+					<MousePointer2 aria-hidden="true" className="h-4 w-4" />
+				</Button>
+				{annotationStatusLabel ? (
+					<span
+						className={
+							annotationStatus === "error"
+								? "browser-panel__annotation-status browser-panel__annotation-status--error"
+								: "browser-panel__annotation-status"
+						}
+					>
+						{annotationStatusLabel}
+					</span>
+				) : sessionBusy ? (
+					<span className="browser-panel__annotation-status">Agent working</span>
+				) : null}
 				<div className="browser-panel__url">
 					<Globe2 aria-hidden="true" className="browser-panel__url-icon" />
 					<Input
