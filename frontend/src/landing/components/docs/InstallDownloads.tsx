@@ -47,7 +47,11 @@ export function InstallDownloads() {
 
 			<div className="ao-install-downloads__grid">
 				{DOWNLOADS.map((download) => (
-					<a key={`${download.platform}-${download.detail}`} className="ao-install-downloads__item" href={download.href}>
+					<a
+						key={`${download.platform}-${download.detail}`}
+						className="ao-install-downloads__item"
+						href={download.href}
+					>
 						<span className="ao-install-downloads__icon">
 							<Logo name={download.logo} size={20} />
 						</span>
