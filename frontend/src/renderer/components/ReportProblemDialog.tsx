@@ -49,7 +49,7 @@ const OUTPUT_DESTINATION_LABELS: Record<ReportProblemOutput, string> = {
 export function ReportProblemDialog({ open, onOpenChange }: ReportProblemDialogProps) {
 	const summaryId = useId();
 	const detailsId = useId();
-	const [previewOutput, setPreviewOutput] = useState<ReportProblemOutput>("github");
+	const [selectedOutput, setSelectedOutput] = useState<ReportProblemOutput>("github");
 	const [summary, setSummary] = useState("");
 	const [details, setDetails] = useState("");
 	const [copiedOutput, setCopiedOutput] = useState<ReportProblemOutput | null>(null);
@@ -60,7 +60,7 @@ export function ReportProblemDialog({ open, onOpenChange }: ReportProblemDialogP
 		if (!open) {
 			setSummary("");
 			setDetails("");
-			setPreviewOutput("github");
+			setSelectedOutput("github");
 			setCopiedOutput(null);
 			setCopyError(null);
 			return;
@@ -82,16 +82,16 @@ export function ReportProblemDialog({ open, onOpenChange }: ReportProblemDialogP
 		[summary, details],
 	);
 
-	const preview = useMemo(
-		() => formatReportProblemDraft(input, diagnostics, previewOutput),
-		[input, diagnostics, previewOutput],
+	const draft = useMemo(
+		() => formatReportProblemDraft(input, diagnostics, selectedOutput),
+		[input, diagnostics, selectedOutput],
 	);
 
 	const copyDraft = async () => {
 		setCopyError(null);
-		const output = previewOutput;
+		const output = selectedOutput;
 		try {
-			await aoBridge.clipboard.writeText(preview);
+			await aoBridge.clipboard.writeText(draft);
 			const destinationUrl = reportProblemDestinationUrl(input, diagnostics, output);
 			if (destinationUrl) {
 				await aoBridge.app.openExternal(destinationUrl);
@@ -99,7 +99,7 @@ export function ReportProblemDialog({ open, onOpenChange }: ReportProblemDialogP
 			setCopiedOutput(output);
 			setSummary("");
 			setDetails("");
-			setPreviewOutput("github");
+			setSelectedOutput("github");
 		} catch (err) {
 			setCopyError(err instanceof Error ? err.message : "Could not copy report draft");
 			setCopiedOutput(null);
@@ -166,45 +166,29 @@ export function ReportProblemDialog({ open, onOpenChange }: ReportProblemDialogP
 										aria-label="Report destination"
 									>
 										<span className="inline-flex min-w-0 items-center gap-2">
-											{previewOutput === "github" && <GitPullRequest className="size-3.5" aria-hidden="true" />}
-											{previewOutput === "discord" && <MessageSquare className="size-3.5" aria-hidden="true" />}
-											{previewOutput === "email" && <Mail className="size-3.5" aria-hidden="true" />}
-											<span className="truncate">{OUTPUT_DESTINATION_LABELS[previewOutput]}</span>
+											{selectedOutput === "github" && <GitPullRequest className="size-3.5" aria-hidden="true" />}
+											{selectedOutput === "discord" && <MessageSquare className="size-3.5" aria-hidden="true" />}
+											{selectedOutput === "email" && <Mail className="size-3.5" aria-hidden="true" />}
+											<span className="truncate">{OUTPUT_DESTINATION_LABELS[selectedOutput]}</span>
 										</span>
 										<ChevronDown className="size-3.5 shrink-0" aria-hidden="true" />
 									</Button>
 								</DropdownMenuTrigger>
-								<DropdownMenuContent align="start" className="w-52">
-									<DropdownMenuItem onSelect={() => setPreviewOutput("github")}>
+								<DropdownMenuContent align="start" className="w-[var(--radix-dropdown-menu-trigger-width)]">
+									<DropdownMenuItem onSelect={() => setSelectedOutput("github")}>
 										<GitPullRequest aria-hidden="true" />
 										GitHub issue
 									</DropdownMenuItem>
-									<DropdownMenuItem onSelect={() => setPreviewOutput("discord")}>
+									<DropdownMenuItem onSelect={() => setSelectedOutput("discord")}>
 										<MessageSquare aria-hidden="true" />
 										Discord
 									</DropdownMenuItem>
-									<DropdownMenuItem onSelect={() => setPreviewOutput("email")}>
+									<DropdownMenuItem onSelect={() => setSelectedOutput("email")}>
 										<Mail aria-hidden="true" />
 										Email support
 									</DropdownMenuItem>
 								</DropdownMenuContent>
 							</DropdownMenu>
-						</div>
-
-						<div className="space-y-2">
-							<div className="flex items-center justify-between gap-3">
-								<label className="text-[12px] font-medium text-muted-foreground" htmlFor="report-preview">
-									Preview
-								</label>
-								<p className="text-[12px] text-muted-foreground">{OUTPUT_DESTINATION_LABELS[previewOutput]}</p>
-							</div>
-							<pre
-								id="report-preview"
-								aria-label="Report preview"
-								className="max-h-[220px] min-h-[156px] overflow-auto whitespace-pre-wrap rounded-md border border-border bg-background/70 p-3 text-[12px] leading-relaxed text-muted-foreground"
-							>
-								{preview}
-							</pre>
 						</div>
 
 						{copyError && (
@@ -220,7 +204,7 @@ export function ReportProblemDialog({ open, onOpenChange }: ReportProblemDialogP
 					<div className="flex items-center justify-end border-t border-border px-5 py-4">
 						<Button type="button" onClick={() => void copyDraft()}>
 							<Send className="size-3.5" aria-hidden="true" />
-							{OUTPUT_ACTION_LABELS[previewOutput]}
+							{OUTPUT_ACTION_LABELS[selectedOutput]}
 						</Button>
 					</div>
 				</Dialog.Content>

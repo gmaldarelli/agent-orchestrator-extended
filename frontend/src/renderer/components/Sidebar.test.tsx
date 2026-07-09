@@ -463,11 +463,10 @@ describe("Sidebar", () => {
 		expect(screen.queryByLabelText("Expected behavior")).not.toBeInTheDocument();
 		const destinationButton = screen.getByRole("button", { name: "Report destination" });
 		expect(destinationButton).toHaveTextContent("GitHub issue");
-		const preview = screen.getByLabelText("Report preview");
-		expect(destinationButton.compareDocumentPosition(preview) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-		expect(preview).toHaveTextContent("[redacted-local-path]");
-		expect(preview).toHaveTextContent("[redacted-local-url]");
-		const reviewedDraft = preview.textContent;
+		await user.click(destinationButton);
+		expect(await screen.findByRole("menu")).toHaveClass("w-[var(--radix-dropdown-menu-trigger-width)]");
+		await user.click(await screen.findByRole("menuitem", { name: "GitHub issue" }));
+		expect(screen.queryByLabelText("Report preview")).not.toBeInTheDocument();
 
 		expect(screen.getByRole("button", { name: "Copy and raise GitHub issue" })).toBeInTheDocument();
 		expect(screen.queryByRole("button", { name: "Copy and open email" })).not.toBeInTheDocument();
@@ -475,7 +474,6 @@ describe("Sidebar", () => {
 
 		await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
 		const copied = writeText.mock.calls[0][0] as string;
-		expect(copied).toBe(reviewedDraft);
 		expect(copied).toContain("Create project fails");
 		expect(copied).toContain("AO version: 9.9.9-test");
 		expect(copied).toContain("Daemon: ready");
@@ -510,13 +508,14 @@ describe("Sidebar", () => {
 
 		await user.click(screen.getByRole("button", { name: "Report destination" }));
 		await user.click(await screen.findByRole("menuitem", { name: "Discord" }));
-		expect(screen.getByLabelText("Report preview")).toHaveTextContent("**AO feedback**");
 		expect(screen.getByRole("button", { name: "Copy and open Discord" })).toBeInTheDocument();
 		expect(screen.queryByRole("button", { name: "Copy and open email" })).not.toBeInTheDocument();
 		await user.click(screen.getByRole("button", { name: "Copy and open Discord" }));
+		await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
+		expect(writeText.mock.calls[0][0]).toContain("**AO feedback**");
+
 		await user.click(screen.getByRole("button", { name: "Report destination" }));
 		await user.click(await screen.findByRole("menuitem", { name: "Email support" }));
-		expect(screen.getByLabelText("Report preview")).toHaveTextContent("To: support@aoagents.dev");
 		expect(screen.getByRole("button", { name: "Copy and open email" })).toBeInTheDocument();
 		expect(screen.queryByRole("button", { name: "Copy and open Discord" })).not.toBeInTheDocument();
 		await user.click(screen.getByRole("button", { name: "Copy and open email" }));
@@ -563,7 +562,7 @@ describe("Sidebar", () => {
 		expect(screen.queryByLabelText("Expected behavior")).not.toBeInTheDocument();
 		expect(screen.queryByRole("combobox", { name: "Report type" })).not.toBeInTheDocument();
 		expect(screen.queryByLabelText("Include safe diagnostics")).not.toBeInTheDocument();
-		expect(screen.getByLabelText("Report preview")).toHaveTextContent("## Safe diagnostics");
+		expect(screen.queryByLabelText("Report preview")).not.toBeInTheDocument();
 	});
 
 	it("renames a session inline and persists via the daemon", async () => {
