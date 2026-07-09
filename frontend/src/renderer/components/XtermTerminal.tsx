@@ -266,7 +266,7 @@ export function XtermTerminal(props: XtermTerminalProps) {
 				// handler's normal-buffer branch). The scrollbar itself is hidden in
 				// CSS so FitAddon's ~14px reservation doesn't shift the grid.
 				scrollback: 5000,
-				 theme: props.theme === "dark" ? dark : light,
+				theme: props.theme === "dark" ? dark : light,
 			});
 		} catch (error) {
 			callbacksRef.current.onError?.(error);
