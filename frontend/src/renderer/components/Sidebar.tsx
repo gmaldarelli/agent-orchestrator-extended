@@ -189,7 +189,10 @@ export function Sidebar({
 		// (same override as shadcn's header-above-sidebar block).
 		<SidebarRoot
 			collapsible="icon"
-			className={cn("border-border", underTopbar ? "top-toolbar h-[calc(100svh-var(--size-toolbar))]!" : "top-0 h-svh!")}
+			className={cn(
+				"border-border",
+				underTopbar ? "top-toolbar h-[calc(100svh-var(--size-toolbar))]!" : "top-0 h-svh!",
+			)}
 		>
 			<SidebarHeader className="gap-0 p-0 pl-2.5 pr-1.75 pt-3.5 group-data-[collapsible=icon]:px-1.5">
 				{/* Brand (project-sidebar__brand); in the icon rail it becomes the old

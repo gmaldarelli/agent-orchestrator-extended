@@ -37,12 +37,12 @@
 
 ## Intentionally out of scope
 
-| Item | Reason |
-| --- | --- |
-| `src/landing/` | Per project scope |
-| Radix runtime widths | `w-[var(--radix-…)]`, `min-w-[8rem]` |
+| Item                  | Reason                                            |
+| --------------------- | ------------------------------------------------- |
+| `src/landing/`        | Per project scope                                 |
+| Radix runtime widths  | `w-[var(--radix-…)]`, `min-w-[8rem]`              |
 | Dynamic inline styles | Kanban gradients, status pills, API accent colors |
 
-## Verified
+## Validation
 
-- `npm run typecheck`, `npx vitest run src/renderer`, `npx vite build` — all pass
+- Re-run formatting, typecheck, tests, and visual QA after rebasing or resolving conflicts.

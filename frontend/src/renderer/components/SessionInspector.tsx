@@ -12,7 +12,6 @@ import { canonicalTrackerIssueId, sortedPRs } from "../types/workspace";
 import { BrowserPanelView } from "./BrowserPanel";
 import type { BrowserViewModel } from "../hooks/useBrowserView";
 import { Badge } from "./ui/badge";
-import { Button } from "./ui/button";
 import { cn } from "../lib/utils";
 import { PRSummaryMeta, PRSummaryParts } from "./PRSummaryDisplay";
 import { StatusPill } from "./StatusPill";
@@ -70,19 +69,16 @@ const prStateTone: Record<SessionPRSummary["state"], string> = {
 	closed: "border-error/40 bg-error/10 text-error",
 };
 
-const inspectorShellClass =
-	"@container/inspector flex h-full min-h-0 flex-col overflow-hidden bg-background";
+const inspectorShellClass = "@container/inspector flex h-full min-h-0 flex-col overflow-hidden bg-background";
 
-const inspectorBodyClass =
-	"min-h-0 flex-1 overflow-y-auto p-5 pb-10 @max-[300px]/inspector:px-3.5";
+const inspectorBodyClass = "min-h-0 flex-1 overflow-y-auto p-5 pb-10 @max-[300px]/inspector:px-3.5";
 
 const inspectorEmptyClass = "text-xs text-muted-foreground leading-normal";
 
 const kvRowClass =
 	"flex items-center gap-2.5 px-1 py-1.5 text-md-sm @max-[300px]/inspector:flex-col @max-[300px]/inspector:items-start @max-[300px]/inspector:gap-1";
 
-const kvKeyClass =
-	"w-kv-label shrink-0 text-muted-foreground @max-[300px]/inspector:w-auto";
+const kvKeyClass = "w-kv-label shrink-0 text-muted-foreground @max-[300px]/inspector:w-auto";
 
 const kvValueClass = "min-w-0 truncate text-foreground @max-[300px]/inspector:w-full";
 
@@ -151,10 +147,7 @@ export function SessionInspector({
 
 	return (
 		<aside className={inspectorShellClass} aria-label="Session inspector">
-			<div
-				className="flex h-inspector-tabs shrink-0 items-center gap-1 border-b border-border px-3"
-				role="tablist"
-			>
+			<div className="flex h-inspector-tabs shrink-0 items-center gap-1 border-b border-border px-3" role="tablist">
 				{VIEWS.map((entry) => (
 					<button
 						key={entry.id}
@@ -374,17 +367,10 @@ function ActivityTimeline({ session }: { session: WorkspaceSession }) {
 	return (
 		<div className="relative pl-5 before:absolute before:top-1 before:bottom-1.5 before:left-1.25 before:w-px before:bg-border before:content-['']">
 			{events.map((event, index) => (
-				<div
-					key={index}
-					className="relative pb-4 last:pb-0"
-					data-testid="inspector-timeline-event"
-				>
+				<div key={index} className="relative pb-4 last:pb-0" data-testid="inspector-timeline-event">
 					<span
 						aria-hidden="true"
-						className={cn(
-							"absolute -left-4.5 top-0.75 size-icon-xs rounded-full",
-							timelineNodeTone[event.tone],
-						)}
+						className={cn("absolute -left-4.5 top-0.75 size-icon-xs rounded-full", timelineNodeTone[event.tone])}
 					/>
 					<div className="text-xs leading-normal text-foreground [&_b]:font-semibold">{event.node}</div>
 					{event.ts ? <div className="mt-1 font-mono text-2xs text-passive">{event.ts}</div> : null}
@@ -809,22 +795,12 @@ function BrowserView({
 	onTogglePopOut?: (next: boolean) => void;
 	browserView?: BrowserViewModel;
 }) {
+	// While maximized, the browser is a full-window overlay that covers the rail,
+	// so the inspector's Browser tab has nothing to show (and must not mount a
+	// second BrowserPanelView — it would fight the overlay over the shared native
+	// view slot). Exit is via the overlay's own minimize button.
 	if (browserPoppedOut) {
-		return (
-			<div role="tabpanel">
-				<div
-					className={cn(
-						inspectorEmptyClass,
-						"flex flex-col items-center gap-2 py-10 px-5 text-center",
-					)}
-				>
-					<p className="text-md-sm text-muted-foreground">Browser preview is in the center pane.</p>
-					<Button onClick={() => onTogglePopOut?.(false)} size="sm" type="button" variant="outline">
-						Return to panel
-					</Button>
-				</div>
-			</div>
-		);
+		return null;
 	}
 
 	if (!browserView) {

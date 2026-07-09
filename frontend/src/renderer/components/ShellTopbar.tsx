@@ -20,9 +20,20 @@ import { OrchestratorIcon } from "./icons";
 import { NewTaskDialog } from "./NewTaskDialog";
 import { cn } from "../lib/utils";
 import { StatusPill } from "./StatusPill";
-import { TopbarButton, TopbarKillError, topbarHeaderClass, topbarHeaderMacClass, topbarProjectLabelClass } from "./TopbarButton";
+import {
+	TopbarButton,
+	TopbarKillError,
+	topbarHeaderClass,
+	topbarHeaderMacClass,
+	topbarProjectLabelClass,
+} from "./TopbarButton";
 
 const isMac = typeof navigator !== "undefined" && /Mac|iPod|iPhone|iPad/.test(navigator.userAgent);
+const isLinux =
+	typeof navigator !== "undefined" &&
+	((navigator as Navigator & { userAgentData?: { platform?: string } }).userAgentData?.platform ?? navigator.platform)
+		.toLowerCase()
+		.includes("linux");
 const dragStyle = isMac ? ({ WebkitAppRegion: "drag" } as React.CSSProperties) : undefined;
 const noDragStyle = isMac ? ({ WebkitAppRegion: "no-drag" } as React.CSSProperties) : undefined;
 
@@ -78,6 +89,10 @@ export function ShellTopbar() {
 	const projectLabel = project?.name ?? session?.workspaceName ?? (projectId ? "" : "agent-orchestrator");
 	const orchestrator = projectId ? findProjectOrchestrator(all, projectId) : undefined;
 	const isProjectRestarting = projectId ? restartingProjectIds.has(projectId) : false;
+
+	if (isLinux && !isSessionRoute) {
+		return null;
+	}
 
 	const openBoard = () =>
 		projectId ? void navigate({ to: "/projects/$projectId", params: { projectId } }) : void navigate({ to: "/" });
@@ -167,7 +182,7 @@ export function ShellTopbar() {
 			<div className="min-w-0 flex-1" />
 
 			<div className="flex shrink-0 items-center gap-1.5">
-				<NotificationCenter style={noDragStyle} />
+				{!isLinux ? <NotificationCenter style={noDragStyle} /> : null}
 				{isSessionRoute ? (
 					<>
 						{isOrchestrator ? (

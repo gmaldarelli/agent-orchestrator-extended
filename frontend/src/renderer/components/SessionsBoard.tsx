@@ -14,6 +14,7 @@ import {
 } from "../types/workspace";
 import { useSessionScmSummary, type SessionPRSummary } from "../hooks/useSessionScmSummary";
 import { useWorkspaceQuery, workspaceQueryKey } from "../hooks/useWorkspaceQuery";
+import { NotificationCenter } from "./NotificationCenter";
 import { BoardWelcome, ProjectBoardEmpty } from "./BoardEmptyState";
 import { OrchestratorIcon } from "./icons";
 import { NewTaskDialog } from "./NewTaskDialog";
@@ -23,6 +24,12 @@ import { restartProjectOrchestrator } from "../lib/restart-orchestrator";
 import { prBrowserUrl, sessionPRDisplaySummaries } from "../lib/pr-display";
 import { cn } from "../lib/utils";
 import { useUiStore } from "../stores/ui-store";
+
+const isLinux =
+	typeof navigator !== "undefined" &&
+	((navigator as Navigator & { userAgentData?: { platform?: string } }).userAgentData?.platform ?? navigator.platform)
+		.toLowerCase()
+		.includes("linux");
 
 type SessionsBoardProps = {
 	/** When set, the board shows only this project's sessions. */
@@ -189,6 +196,7 @@ export function SessionsBoard({ projectId }: SessionsBoardProps) {
 
 	const actions = projectId ? (
 		<>
+			{isLinux ? <NotificationCenter /> : null}
 			{visibleSpawnError && !showProjectEmpty && (
 				<TopbarKillError className="max-w-content-max truncate" title={visibleSpawnError}>
 					{visibleSpawnError}
@@ -219,6 +227,8 @@ export function SessionsBoard({ projectId }: SessionsBoardProps) {
 							: "Spawn Orchestrator"}
 			</TopbarButton>
 		</>
+	) : isLinux ? (
+		<NotificationCenter />
 	) : undefined;
 
 	return (
@@ -335,7 +345,9 @@ function ZoneColumn({
 	return (
 		<section
 			className="flex min-w-0 flex-col overflow-hidden rounded-panel"
-			style={{ background: `linear-gradient(180deg, ${col.glow}, transparent var(--size-kanban-glow)), var(--color-overlay-subtle)` }}
+			style={{
+				background: `linear-gradient(180deg, ${col.glow}, transparent var(--size-kanban-glow)), var(--color-overlay-subtle)`,
+			}}
 		>
 			<div className="flex shrink-0 items-center gap-2.25 px-3.75 pb-2.75 pt-3.5">
 				<span
