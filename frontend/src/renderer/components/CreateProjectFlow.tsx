@@ -216,7 +216,6 @@ async function repositorySetupRequired(path: string): Promise<"NOT_A_GIT_REPO" |
 	}
 }
 
-
 function shouldScanCreateFailure(message: string): boolean {
 	if (/daemon|server|conflict|already exists|not ready|start|orchestrator|permission denied/i.test(message))
 		return false;

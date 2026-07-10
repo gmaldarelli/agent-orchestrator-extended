@@ -132,8 +132,22 @@ async function openCreateProjectDialog(
 	path = "/repo/new-project",
 	scan: {
 		path: string;
-		repos: Array<{ name: string; path: string; relativePath: string; branch: string; remote: string; hasRemote: boolean; status?: "ok" | "error"; reason?: string }>;
-	} = { path, repos: [{ name: "project", path, relativePath: ".", branch: "main", remote: "origin", hasRemote: true, status: "ok" }] },
+		repos: Array<{
+			name: string;
+			path: string;
+			relativePath: string;
+			branch: string;
+			remote: string;
+			hasRemote: boolean;
+			status?: "ok" | "error";
+			reason?: string;
+		}>;
+	} = {
+		path,
+		repos: [
+			{ name: "project", path, relativePath: ".", branch: "main", remote: "origin", hasRemote: true, status: "ok" },
+		],
+	},
 ) {
 	const user = userEvent.setup();
 	window.ao!.app.chooseDirectory = vi.fn().mockResolvedValue(path);
@@ -269,7 +283,18 @@ describe("Sidebar", () => {
 		renderSidebar({ onCreateProject, onInitializeProject });
 		const user = await openCreateProjectDialog("/repo/unborn", {
 			path: "/repo/unborn",
-			repos: [{ name: "unborn", path: "/repo/unborn", relativePath: ".", branch: "HEAD", remote: "", hasRemote: false, status: "error", reason: "Repository must have at least one commit." }],
+			repos: [
+				{
+					name: "unborn",
+					path: "/repo/unborn",
+					relativePath: ".",
+					branch: "HEAD",
+					remote: "",
+					hasRemote: false,
+					status: "error",
+					reason: "Repository must have at least one commit.",
+				},
+			],
 		});
 		expect(await screen.findByText(/If this folder needs Git setup/i)).toBeInTheDocument();
 		await user.click(screen.getByRole("button", { name: "Create and start" }));
