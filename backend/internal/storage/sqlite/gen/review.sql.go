@@ -295,23 +295,6 @@ func (q *Queries) MarkReviewRunDelivered(ctx context.Context, arg MarkReviewRunD
 	return result.RowsAffected()
 }
 
-const supersedeReviewRun = `-- name: SupersedeReviewRun :execrows
-UPDATE review_run SET status = 'failed', body = ? WHERE id = ? AND verdict = '' AND status NOT IN ('failed', 'cancelled')
-`
-
-type SupersedeReviewRunParams struct {
-	Body string
-	ID   string
-}
-
-func (q *Queries) SupersedeReviewRun(ctx context.Context, arg SupersedeReviewRunParams) (int64, error) {
-	result, err := q.db.ExecContext(ctx, supersedeReviewRun, arg.Body, arg.ID)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected()
-}
-
 const supersedeStaleRunningReviewRuns = `-- name: SupersedeStaleRunningReviewRuns :execrows
 UPDATE review_run SET status = 'failed', body = ? WHERE session_id = ? AND pr_url = ? AND target_sha != ? AND status = 'running' AND verdict = ''
 `

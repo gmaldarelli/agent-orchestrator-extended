@@ -34,7 +34,6 @@ type Store interface {
 	GetReviewBySession(ctx stdctx.Context, id domain.SessionID) (domain.Review, bool, error)
 	InsertReviewRun(ctx stdctx.Context, r domain.ReviewRun) error
 	UpdateReviewRunResult(ctx stdctx.Context, id string, status domain.ReviewRunStatus, verdict domain.ReviewVerdict, body, githubReviewID string) (bool, error)
-	SupersedeReviewRun(ctx stdctx.Context, id, body string) (bool, error)
 	SupersedeStaleRunningReviewRuns(ctx stdctx.Context, sessionID domain.SessionID, prURL, targetSHA, body string) (int64, error)
 	CancelRunningReviewRunsBySession(ctx stdctx.Context, sessionID domain.SessionID, body string) (int64, error)
 	GetReviewRun(ctx stdctx.Context, id string) (domain.ReviewRun, bool, error)
@@ -219,24 +218,6 @@ func (e *Engine) Trigger(ctx stdctx.Context, workerID domain.SessionID) (Trigger
 	for _, reviewState := range reviews {
 		if reviewState.Status != ReviewStateNeedsReview && reviewState.Status != ReviewStateChangesRequested {
 			continue
-		}
-		if reviewState.LatestRun != nil &&
-			reviewState.LatestRun.Status != domain.ReviewRunFailed &&
-			reviewState.LatestRun.Status != domain.ReviewRunCancelled &&
-			reviewState.LatestRun.Status != domain.ReviewRunRunning &&
-			reviewState.LatestRun.Verdict == domain.VerdictNone {
-			superseded, err := e.store.SupersedeReviewRun(ctx, reviewState.LatestRun.ID, "superseded by a new review trigger")
-			if err != nil {
-				return TriggerResult{}, err
-			}
-			if !superseded {
-				if latest, ok, err := e.store.GetReviewRun(ctx, reviewState.LatestRun.ID); err != nil {
-					return TriggerResult{}, err
-				} else if ok {
-					reviews = replaceReviewLatestRun(reviews, reviewState.PRURL, reviewState.TargetSHA, latest)
-					continue
-				}
-			}
 		}
 		if _, err := e.store.SupersedeStaleRunningReviewRuns(ctx, workerID, reviewState.PRURL, reviewState.TargetSHA, "superseded by a review trigger for a newer commit"); err != nil {
 			return TriggerResult{}, err

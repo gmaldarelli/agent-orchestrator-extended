@@ -18,9 +18,6 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 -- name: UpdateReviewRunResult :execrows
 UPDATE review_run SET status = ?, verdict = ?, body = ?, github_review_id = ? WHERE id = ? AND status = 'running';
 
--- name: SupersedeReviewRun :execrows
-UPDATE review_run SET status = 'failed', body = ? WHERE id = ? AND verdict = '' AND status NOT IN ('failed', 'cancelled');
-
 -- name: SupersedeStaleRunningReviewRuns :execrows
 UPDATE review_run SET status = 'failed', body = ? WHERE session_id = ? AND pr_url = ? AND target_sha != ? AND status = 'running' AND verdict = '';
 

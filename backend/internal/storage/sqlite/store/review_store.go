@@ -84,21 +84,6 @@ func (s *Store) UpdateReviewRunResult(ctx context.Context, id string, status dom
 	return n > 0, nil
 }
 
-// SupersedeReviewRun marks an unverdicted non-failed pass failed so a new pass
-// for the same commit can be recorded.
-func (s *Store) SupersedeReviewRun(ctx context.Context, id, body string) (bool, error) {
-	s.writeMu.Lock()
-	defer s.writeMu.Unlock()
-	n, err := s.qw.SupersedeReviewRun(ctx, gen.SupersedeReviewRunParams{
-		Body: body,
-		ID:   id,
-	})
-	if err != nil {
-		return false, err
-	}
-	return n > 0, nil
-}
-
 // SupersedeStaleRunningReviewRuns marks older running unverdicted passes for a
 // worker failed before starting a review for a newer commit.
 func (s *Store) SupersedeStaleRunningReviewRuns(ctx context.Context, sessionID domain.SessionID, prURL, targetSHA, body string) (int64, error) {

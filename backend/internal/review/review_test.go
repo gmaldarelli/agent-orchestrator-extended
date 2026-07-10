@@ -73,19 +73,6 @@ func (f *fakeStore) UpdateReviewRunResult(_ context.Context, id string, status d
 	}
 	return false, nil
 }
-func (f *fakeStore) SupersedeReviewRun(_ context.Context, id, body string) (bool, error) {
-	for i := range f.runs {
-		if f.runs[i].ID == id {
-			if f.runs[i].Verdict != domain.VerdictNone || f.runs[i].Status == domain.ReviewRunFailed {
-				return false, nil
-			}
-			f.runs[i].Status = domain.ReviewRunFailed
-			f.runs[i].Body = body
-			return true, nil
-		}
-	}
-	return false, nil
-}
 func (f *fakeStore) SupersedeStaleRunningReviewRuns(_ context.Context, sessionID domain.SessionID, prURL, targetSHA, body string) (int64, error) {
 	var n int64
 	for i := range f.runs {
@@ -402,29 +389,6 @@ func TestTriggerReusesRunningRowWithNoVerdict(t *testing.T) {
 	}
 	if got := store.runs[0]; got.Status != domain.ReviewRunRunning {
 		t.Fatalf("running row should remain running, got %+v", got)
-	}
-}
-
-func TestTriggerSupersedesNonRunningRowWithNoVerdict(t *testing.T) {
-	store := &fakeStore{
-		review: &domain.Review{ID: "rev-1", SessionID: "mer-1", ReviewerHandleID: "review-mer-1"},
-		runs:   []domain.ReviewRun{{ID: "run-1", SessionID: "mer-1", PRURL: "https://github.com/o/r/pull/1", TargetSHA: "sha1", Status: domain.ReviewRunComplete}},
-	}
-	launcher := &fakeLauncher{alive: true, handle: "review-mer-1"}
-	eng := newEngineForTest(store, fakeSessions{rec: liveWorker(), ok: true}, prAt("sha1"), fakeProjects{}, launcher)
-
-	res, err := eng.Trigger(context.Background(), "mer-1")
-	if err != nil {
-		t.Fatalf("Trigger: %v", err)
-	}
-	if !res.Created {
-		t.Fatalf("expected a fresh pass when prior non-running row has no verdict: %+v", res)
-	}
-	if !launcher.notified || launcher.spawned {
-		t.Fatalf("expected notify on live reviewer pane, not spawn: %+v", launcher)
-	}
-	if stale := store.runs[0]; stale.ID != "run-1" || stale.Status != domain.ReviewRunFailed {
-		t.Fatalf("expected stale run-1 marked failed, got %+v", stale)
 	}
 }
 
