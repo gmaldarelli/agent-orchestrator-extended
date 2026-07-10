@@ -4,6 +4,7 @@ import { Loader2, X } from "lucide-react";
 import { type FormEvent, useEffect, useId, useState } from "react";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
+import { Label } from "./ui/label";
 import { RequiredAgentField } from "./CreateProjectAgentSheet";
 import type { components } from "../../api/schema";
 import { apiClient, apiErrorMessage } from "../lib/api-client";
@@ -193,7 +194,7 @@ export function NewTaskDialog({ open, projectId, onCreated, onOpenChange }: NewT
 							<div className="space-y-1.5">
 								<label className="text-xs font-medium text-muted-foreground" htmlFor={branchId}>
 									Branch
-								</label>
+								</Label>
 								<Input
 									id={branchId}
 									placeholder="optional"
