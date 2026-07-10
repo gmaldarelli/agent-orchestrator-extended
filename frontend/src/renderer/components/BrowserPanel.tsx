@@ -24,6 +24,7 @@ export type BrowserAnnotationQueueModel = {
 	cancelPicking: () => void;
 	enqueue: (payload: BrowserAnnotationSubmitPayload) => void;
 	failPicking: (message: string) => void;
+	retryQueued: () => void;
 };
 
 export function useBrowserAnnotationQueue({
@@ -81,6 +82,7 @@ export function useBrowserAnnotationQueue({
 
 		void (async () => {
 			let sent = false;
+			let failureMessage = "Unable to send annotation.";
 			try {
 				const message = formatBrowserAnnotationMessage(payload);
 				const { error } = await apiClient.POST("/api/v1/sessions/{sessionId}/send", {
@@ -88,28 +90,24 @@ export function useBrowserAnnotationQueue({
 					body: { message },
 				});
 				if (error) {
-					if (sendGeneration === generationRef.current && sendSessionId === sessionIdRef.current) {
-						setState({
-							status: "error",
-							error: apiErrorMessage(error, "Unable to send annotation."),
-							queuedCount: annotationQueueRef.current.length,
-						});
-					}
+					failureMessage = apiErrorMessage(error, "Unable to send annotation.");
 					return;
 				}
 				sent = true;
 			} catch (error) {
-				if (sendGeneration === generationRef.current && sendSessionId === sessionIdRef.current) {
-					setState({
-						status: "error",
-						error: apiErrorMessage(error, "Unable to send annotation."),
-						queuedCount: annotationQueueRef.current.length,
-					});
-				}
+				failureMessage = apiErrorMessage(error, "Unable to send annotation.");
 			} finally {
 				if (sendGeneration !== generationRef.current || sendSessionId !== sessionIdRef.current) return;
 				annotationSendingRef.current = false;
-				if (!sent) return;
+				if (!sent) {
+					annotationQueueRef.current.unshift(payload);
+					setState({
+						status: "error",
+						error: failureMessage,
+						queuedCount: annotationQueueRef.current.length,
+					});
+					return;
+				}
 
 				annotationWaitingForAgentCycleRef.current = true;
 				annotationWaitAfterCycleRef.current = sendCycle;
@@ -185,6 +183,12 @@ export function useBrowserAnnotationQueue({
 		[drainAnnotationQueue],
 	);
 
+	const retryQueued = useCallback(() => {
+		if (annotationQueueRef.current.length === 0) return;
+		setState({ status: "queued", error: "", queuedCount: annotationQueueRef.current.length });
+		drainAnnotationQueue();
+	}, [drainAnnotationQueue]);
+
 	return {
 		status: state.status,
 		error: state.error,
@@ -193,6 +197,7 @@ export function useBrowserAnnotationQueue({
 		cancelPicking,
 		enqueue,
 		failPicking,
+		retryQueued,
 	};
 }
 
@@ -231,10 +236,11 @@ export function BrowserPanelView({
 	const { viewId, navState, slotRef, navigate, goBack, goForward, reload, stop, annotationMode, setAnnotationMode } =
 		browserView;
 	const [urlInput, setUrlInput] = useState(navState.url);
-	const { beginPicking, cancelPicking, enqueue, error, failPicking, queuedCount, status } = annotationQueue;
+	const { beginPicking, cancelPicking, enqueue, error, failPicking, queuedCount, retryQueued, status } = annotationQueue;
 	const showStaticPreview = !window.ao?.browser && navState.url !== "";
 	const sessionBusy = session.status === "working";
 	const canAnnotate = Boolean(window.ao?.browser && viewId && navState.url);
+	const canRetryAnnotation = status === "error" && queuedCount > 0;
 
 	useEffect(() => {
 		setUrlInput(navState.url);
@@ -263,6 +269,10 @@ export function BrowserPanelView({
 
 	const toggleAnnotationMode = async () => {
 		if (!canAnnotate || status === "sending") return;
+		if (canRetryAnnotation) {
+			retryQueued();
+			return;
+		}
 		const next = !(annotationMode || status === "picking");
 		try {
 			await setAnnotationMode(next);
@@ -328,13 +338,19 @@ export function BrowserPanelView({
 					)}
 				</Button>
 				<Button
-					aria-label={annotationMode || status === "picking" ? "Cancel annotation" : "Annotate page"}
+					aria-label={
+						canRetryAnnotation
+							? "Retry annotation"
+							: annotationMode || status === "picking"
+								? "Cancel annotation"
+								: "Annotate page"
+					}
 					aria-pressed={annotationMode || status === "picking"}
 					className="browser-panel__annotate-btn"
 					disabled={!canAnnotate || status === "sending"}
 					onClick={() => void toggleAnnotationMode()}
 					size="icon-sm"
-					title="Annotate page"
+					title={canRetryAnnotation ? "Retry annotation" : "Annotate page"}
 					type="button"
 					variant="ghost"
 				>

@@ -66,6 +66,7 @@ vi.mock("./BrowserPanel", () => ({
 		cancelPicking: vi.fn(),
 		enqueue: vi.fn(),
 		failPicking: vi.fn(),
+		retryQueued: vi.fn(),
 	}),
 }));
 const browserDestroy = vi.hoisted(() => vi.fn());

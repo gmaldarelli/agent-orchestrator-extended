@@ -536,6 +536,36 @@ describe("BrowserPanel", () => {
 		expect(await screen.findByText("AO daemon is not ready.")).toBeInTheDocument();
 	});
 
+	it("keeps a failed annotation queued so the user can retry it", async () => {
+		postMock.mockResolvedValueOnce({ error: { message: "AO daemon is not ready." } }).mockResolvedValueOnce({ data: {} });
+		hookState.navState = { ...hookState.navState, url: "http://localhost:5173/" };
+		render(<BrowserPanel active onTogglePopOut={() => undefined} poppedOut={false} session={session} />);
+		const payload = annotationPayload("Keep my original annotation request.");
+
+		act(() => {
+			annotationSubmitListeners.forEach((listener) =>
+				listener({
+					...payload,
+					context: {
+						...payload.context,
+						selector: "button#save",
+					},
+				}),
+			);
+		});
+
+		expect(await screen.findByText("AO daemon is not ready.")).toBeInTheDocument();
+		expect(postMock).toHaveBeenCalledTimes(1);
+
+		await userEvent.click(screen.getByRole("button", { name: /retry annotation/i }));
+
+		expect(await screen.findByText("Sent")).toBeInTheDocument();
+		expect(postMock).toHaveBeenCalledTimes(2);
+		const retryBody = postMock.mock.calls[1][1].body as { message: string };
+		expect(retryBody.message).toContain("Keep my original annotation request.");
+		expect(retryBody.message).toContain("button#save");
+	});
+
 	it("clears picking state when the page cancels annotation mode", async () => {
 		hookState.navState = { ...hookState.navState, url: "http://localhost:5173/" };
 		render(<BrowserPanel active onTogglePopOut={() => undefined} poppedOut={false} session={session} />);
