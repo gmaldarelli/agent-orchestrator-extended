@@ -4,11 +4,14 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/aoagents/agent-orchestrator/backend/internal/domain"
 	"github.com/aoagents/agent-orchestrator/backend/internal/ports"
 	sessionmanager "github.com/aoagents/agent-orchestrator/backend/internal/session_manager"
 )
+
+const cancelInterruptDelay = 150 * time.Millisecond
 
 // Launcher spawns, re-notifies, and probes a reviewer over a worker's worktree.
 // It is the side of the engine that talks to the reviewer registry and runtime;
@@ -172,7 +175,25 @@ func (l *agentLauncher) Cancel(ctx context.Context, handleID string, harness dom
 	}
 	switch spec.Mode {
 	case ports.ReviewCancelInterrupt:
-		return l.runtime.Interrupt(ctx, ports.RuntimeHandle{ID: handleID})
+		interrupts := spec.Interrupts
+		if interrupts <= 0 {
+			interrupts = 1
+		}
+		for i := 0; i < interrupts; i++ {
+			if err := l.runtime.Interrupt(ctx, ports.RuntimeHandle{ID: handleID}); err != nil {
+				return err
+			}
+			if i < interrupts-1 {
+				timer := time.NewTimer(cancelInterruptDelay)
+				select {
+				case <-ctx.Done():
+					timer.Stop()
+					return ctx.Err()
+				case <-timer.C:
+				}
+			}
+		}
+		return nil
 	default:
 		return fmt.Errorf("reviewer adapter %q returned unsupported cancel mode %q", harness, spec.Mode)
 	}

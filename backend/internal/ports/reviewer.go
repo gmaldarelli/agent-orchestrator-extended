@@ -33,7 +33,8 @@ const (
 // ReviewCancelSpec is the adapter-selected cancellation behavior for a running
 // reviewer.
 type ReviewCancelSpec struct {
-	Mode ReviewCancelMode
+	Mode       ReviewCancelMode
+	Interrupts int
 }
 
 // ReviewerCanceller is implemented by reviewer adapters that explicitly define

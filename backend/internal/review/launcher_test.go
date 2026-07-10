@@ -36,9 +36,10 @@ func (f *fakePreLaunchReviewer) PreLaunch(_ context.Context, inv ports.ReviewInv
 
 type fakeCancellableReviewer struct {
 	fakeReviewer
-	cancelled bool
-	cancelErr error
-	mode      ports.ReviewCancelMode
+	cancelled  bool
+	cancelErr  error
+	mode       ports.ReviewCancelMode
+	interrupts int
 }
 
 func (f *fakeCancellableReviewer) ReviewCancel(context.Context) (ports.ReviewCancelSpec, error) {
@@ -50,7 +51,7 @@ func (f *fakeCancellableReviewer) ReviewCancel(context.Context) (ports.ReviewCan
 	if mode == "" {
 		mode = ports.ReviewCancelInterrupt
 	}
-	return ports.ReviewCancelSpec{Mode: mode}, nil
+	return ports.ReviewCancelSpec{Mode: mode, Interrupts: f.interrupts}, nil
 }
 
 type fakeReviewerResolver struct {
@@ -63,11 +64,12 @@ func (f fakeReviewerResolver) Reviewer(domain.ReviewerHarness) (ports.Reviewer, 
 }
 
 type fakeRuntime struct {
-	createCfg ports.RuntimeConfig
-	sentMsg   string
-	sentTo    string
-	alive     bool
-	interrupt string
+	createCfg  ports.RuntimeConfig
+	sentMsg    string
+	sentTo     string
+	alive      bool
+	interrupt  string
+	interrupts int
 }
 
 func (f *fakeRuntime) Create(_ context.Context, cfg ports.RuntimeConfig) (ports.RuntimeHandle, error) {
@@ -79,6 +81,7 @@ func (f *fakeRuntime) IsAlive(_ context.Context, _ ports.RuntimeHandle) (bool, e
 }
 func (f *fakeRuntime) Interrupt(_ context.Context, handle ports.RuntimeHandle) error {
 	f.interrupt = handle.ID
+	f.interrupts++
 	return nil
 }
 func (f *fakeRuntime) SendMessage(_ context.Context, handle ports.RuntimeHandle, msg string) error {
@@ -161,7 +164,7 @@ func TestLauncherAlive(t *testing.T) {
 }
 
 func TestLauncherCancelUsesReviewerCancelMode(t *testing.T) {
-	reviewer := &fakeCancellableReviewer{}
+	reviewer := &fakeCancellableReviewer{interrupts: 2}
 	rt := &fakeRuntime{}
 	l := NewLauncher(fakeReviewerResolver{reviewer: reviewer, ok: true}, rt)
 
@@ -173,6 +176,9 @@ func TestLauncherCancelUsesReviewerCancelMode(t *testing.T) {
 	}
 	if rt.interrupt != "review-mer-1" {
 		t.Fatalf("interrupt handle = %q, want review-mer-1", rt.interrupt)
+	}
+	if rt.interrupts != 2 {
+		t.Fatalf("interrupt count = %d, want 2", rt.interrupts)
 	}
 }
 

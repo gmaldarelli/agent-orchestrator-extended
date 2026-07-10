@@ -59,5 +59,5 @@ func (r *Reviewer) ReviewMessage(_ context.Context, inv ports.ReviewInvocation) 
 // ReviewCancel stops the active OpenCode reviewer turn while preserving the
 // terminal pane for inspection.
 func (r *Reviewer) ReviewCancel(context.Context) (ports.ReviewCancelSpec, error) {
-	return ports.ReviewCancelSpec{Mode: ports.ReviewCancelInterrupt}, nil
+	return ports.ReviewCancelSpec{Mode: ports.ReviewCancelInterrupt, Interrupts: 2}, nil
 }
