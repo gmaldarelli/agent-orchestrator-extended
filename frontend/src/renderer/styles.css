@@ -233,6 +233,19 @@ select {
 	height: 100%;
 }
 
+/* Normal-buffer panes (codex, a plain shell) now keep scrollback (scrollback:5000
+   in XtermTerminal), so the viewport becomes scrollable. Hide the scrollbar so it
+   doesn't reserve width and shift the cell grid; the wheel still scrolls via the
+   terminal's wheel handler. */
+.xterm .xterm-viewport {
+	scrollbar-width: none;
+}
+
+.xterm .xterm-viewport::-webkit-scrollbar {
+	width: 0;
+	height: 0;
+}
+
 .terminal-pane-frame:fullscreen {
 	background: var(--bg);
 }
@@ -335,14 +348,6 @@ select {
 	color: var(--fg-muted);
 }
 
-:root[data-theme="light"] .xterm .xterm-viewport::-webkit-scrollbar-thumb {
-	background: rgb(0 0 0 / 0.12);
-}
-
-:root[data-theme="light"] .xterm .xterm-viewport:hover::-webkit-scrollbar-thumb {
-	background: rgb(0 0 0 / 0.2);
-}
-
 @keyframes status-pulse {
 	0%,
 	100% {
@@ -420,6 +425,28 @@ body.is-resizing-x {
 body.is-resizing-x [data-slot="sidebar-gap"],
 body.is-resizing-x [data-slot="sidebar-container"] {
 	transition: none;
+}
+
+/* Expanded-only sidebar chrome waits for the rail width transition to finish
+ * before painting, so tap-to-expand does not flash labels inside the narrow
+ * collapsed rail. */
+.sidebar-expanded-chrome {
+	transition: opacity 150ms ease-out;
+}
+
+[data-slot="sidebar-container"][data-expanded-chrome="hidden"] .sidebar-expanded-chrome {
+	opacity: 0;
+	pointer-events: none;
+}
+
+[data-slot="sidebar-container"][data-expanded-chrome="visible"] .sidebar-expanded-chrome {
+	opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.sidebar-expanded-chrome {
+		transition: none;
+	}
 }
 
 /* ── Shell topbar (agent-orchestrator .dashboard-app-header) ──────────────
