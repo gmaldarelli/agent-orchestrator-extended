@@ -176,6 +176,7 @@
 	--spacing-preview-max: var(--size-preview-max);
 	--spacing-notification-width: var(--size-notification-width);
 	--spacing-notification-max-height: var(--size-notification-max-height);
+	--spacing-select-menu-max: var(--size-select-menu-max);
 	--spacing-notification-icon: var(--size-notification-icon);
 	--spacing-font-size-label: var(--size-font-size-label);
 	--spacing-pr-table-actions: var(--size-pr-table-actions);

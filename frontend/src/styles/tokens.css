@@ -212,6 +212,7 @@
 	--size-kv-label: 74px;
 	--size-notification-width: 380px;
 	--size-notification-max-height: 420px;
+	--size-select-menu-max: 320px; /* agent/select dropdown scroll cap (was max-h-80) */
 	--size-notification-icon: 26px;
 	--size-font-size-label: 44px;
 	--size-inspector-status-chip-max: 58%;
