@@ -378,7 +378,10 @@ export function BrowserPanelView({
 					<span className="browser-panel__annotation-status">Agent working</span>
 				) : null}
 				<div className="relative min-w-0 flex-1">
-					<Globe2 aria-hidden="true" className="pointer-events-none absolute left-2.25 top-1/2 size-icon-md -translate-y-1/2 text-passive" />
+					<Globe2
+						aria-hidden="true"
+						className="pointer-events-none absolute left-2.25 top-1/2 size-icon-md -translate-y-1/2 text-passive"
+					/>
 					<Input
 						aria-label="Browser URL"
 						className="h-browser-url pl-browser-url font-mono text-xs"
