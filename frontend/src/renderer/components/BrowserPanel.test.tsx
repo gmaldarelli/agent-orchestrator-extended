@@ -537,7 +537,9 @@ describe("BrowserPanel", () => {
 	});
 
 	it("keeps a failed annotation queued so the user can retry it", async () => {
-		postMock.mockResolvedValueOnce({ error: { message: "AO daemon is not ready." } }).mockResolvedValueOnce({ data: {} });
+		postMock
+			.mockResolvedValueOnce({ error: { message: "AO daemon is not ready." } })
+			.mockResolvedValueOnce({ data: {} });
 		hookState.navState = { ...hookState.navState, url: "http://localhost:5173/" };
 		render(<BrowserPanel active onTogglePopOut={() => undefined} poppedOut={false} session={session} />);
 		const payload = annotationPayload("Keep my original annotation request.");

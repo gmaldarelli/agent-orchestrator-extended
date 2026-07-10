@@ -236,7 +236,8 @@ export function BrowserPanelView({
 	const { viewId, navState, slotRef, navigate, goBack, goForward, reload, stop, annotationMode, setAnnotationMode } =
 		browserView;
 	const [urlInput, setUrlInput] = useState(navState.url);
-	const { beginPicking, cancelPicking, enqueue, error, failPicking, queuedCount, retryQueued, status } = annotationQueue;
+	const { beginPicking, cancelPicking, enqueue, error, failPicking, queuedCount, retryQueued, status } =
+		annotationQueue;
 	const showStaticPreview = !window.ao?.browser && navState.url !== "";
 	const sessionBusy = session.status === "working";
 	const canAnnotate = Boolean(window.ao?.browser && viewId && navState.url);
