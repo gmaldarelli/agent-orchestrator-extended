@@ -86,7 +86,7 @@ describe("NewTaskDialog", () => {
 		expect(agentLabel).toHaveAttribute("data-slot", "label");
 		expect(branchLabel).toHaveAttribute("data-slot", "label");
 		expect(screen.getByRole("combobox", { name: "Agent" })).toHaveAttribute("data-size", "sm");
-		expect(screen.getByLabelText("Branch")).toHaveClass("h-8");
+		expect(screen.getByLabelText("Branch")).toHaveClass("h-control-form");
 	});
 
 	it("preselects the project's default agent and omits harness so the daemon applies it", async () => {

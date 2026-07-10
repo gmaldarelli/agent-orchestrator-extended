@@ -245,7 +245,7 @@ export const RequiredAgentField = memo(function RequiredAgentField({
 				{label}
 			</Label>
 			<Select value={value} onValueChange={onChange} disabled={disabled}>
-				<SelectTrigger id={id} className="h-control-form w-full text-control" aria-invalid={invalid || undefined}>
+				<SelectTrigger id={id} size="sm" className="w-full text-control" aria-invalid={invalid || undefined}>
 					<SelectValue placeholder={placeholder} />
 				</SelectTrigger>
 				<SelectContent position="popper" align="start" sideOffset={4} className="!max-h-control-form0">

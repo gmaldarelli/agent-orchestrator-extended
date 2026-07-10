@@ -192,7 +192,7 @@ export function NewTaskDialog({ open, projectId, onCreated, onOpenChange }: NewT
 								</button>
 							</div>
 							<div className="space-y-1.5">
-								<label className="text-xs font-medium text-muted-foreground" htmlFor={branchId}>
+								<Label className="text-xs font-medium text-muted-foreground" htmlFor={branchId}>
 									Branch
 								</Label>
 								<Input
