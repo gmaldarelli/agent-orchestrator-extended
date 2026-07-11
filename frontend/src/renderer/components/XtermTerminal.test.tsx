@@ -619,6 +619,21 @@ describe("XtermTerminal", () => {
 		open.mockRestore();
 	});
 
+	it("opens OSC 8 links externally and reports the clicked URL", () => {
+		const open = vi.spyOn(window, "open").mockReturnValue(null);
+		const onLinkOpen = vi.fn();
+		render(<XtermTerminal onLinkOpen={onLinkOpen} theme="dark" />);
+		const oscLinkHandler = state.lastTerminal!.options.linkHandler as {
+			activate: (event: MouseEvent, uri: string) => void;
+		};
+
+		oscLinkHandler.activate({} as MouseEvent, "http://localhost:3000");
+
+		expect(open).toHaveBeenCalledWith("http://localhost:3000", "_blank", "noopener");
+		expect(onLinkOpen).toHaveBeenCalledWith("http://localhost:3000");
+		open.mockRestore();
+	});
+
 	it("forces plain drag selection without raw xterm data forwarding", () => {
 		render(<XtermTerminal theme="dark" />);
 

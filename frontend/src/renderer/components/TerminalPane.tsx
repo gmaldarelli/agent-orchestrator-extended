@@ -130,16 +130,6 @@ export function providerScrollsByKeyboard(provider?: string): boolean {
 	return provider ? KEYBOARD_SCROLL_PROVIDERS.has(provider) : false;
 }
 
-function isLoopbackPreviewURL(value: string): boolean {
-	try {
-		const url = new URL(value);
-		if (url.protocol !== "http:" && url.protocol !== "https:") return false;
-		return isLoopbackHostname(url.hostname);
-	} catch {
-		return false;
-	}
-}
-
 function bannerText(state: TerminalSessionState, error?: string): string | undefined {
 	if (state === "reattaching") return "Terminal disconnected — reattaching…";
 	if (state === "error") return `Terminal error: ${error ?? "connection failed"}`;
@@ -175,7 +165,13 @@ function AttachedTerminal({ session, theme, daemonReady, terminalTarget, fontSiz
 	}, []);
 	const handleLinkOpen = useCallback(
 		(uri: string) => {
-			if (!session?.id || session.kind !== "worker" || !isLoopbackPreviewURL(uri)) return;
+			if (!session?.id || session.kind !== "worker") return;
+			try {
+				const url = new URL(uri);
+				if ((url.protocol !== "http:" && url.protocol !== "https:") || !isLoopbackHostname(url.hostname)) return;
+			} catch {
+				return;
+			}
 			void (async () => {
 				try {
 					const { error: previewError } = await apiClient.POST("/api/v1/sessions/{sessionId}/preview", {
