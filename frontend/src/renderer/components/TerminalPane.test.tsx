@@ -1,11 +1,22 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { act, render, screen, waitFor } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { WorkspaceSession } from "../types/workspace";
-import { TerminalPane, providerScrollsByKeyboard } from "./TerminalPane";
+import { isLoopbackPreviewURL, TerminalPane, providerScrollsByKeyboard } from "./TerminalPane";
+
+const postMock = vi.fn();
+let terminalLinkHandler: ((uri: string) => void) | undefined;
+
+vi.mock("../lib/api-client", () => ({
+	apiClient: { POST: (...args: unknown[]) => postMock(...args) },
+	apiErrorMessage: (_error: unknown, fallback: string) => fallback,
+}));
 
 vi.mock("./XtermTerminal", () => ({
-	XtermTerminal: () => <div data-testid="xterm" />,
+	XtermTerminal: (props: { onLinkOpen?: (uri: string) => void }) => {
+		terminalLinkHandler = props.onLinkOpen;
+		return <div data-testid="xterm" />;
+	},
 }));
 
 vi.mock("../hooks/useTerminalSession", () => ({
@@ -35,6 +46,12 @@ const orchestrator = {
 	title: "orchestrate",
 	kind: "orchestrator",
 } satisfies WorkspaceSession;
+
+beforeEach(() => {
+	postMock.mockReset();
+	postMock.mockResolvedValue({ data: {} });
+	terminalLinkHandler = undefined;
+});
 
 function renderPane(session?: WorkspaceSession) {
 	const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -111,5 +128,50 @@ describe("providerScrollsByKeyboard", () => {
 
 	it("is false when the provider is unknown", () => {
 		expect(providerScrollsByKeyboard(undefined)).toBe(false);
+	});
+});
+
+describe("isLoopbackPreviewURL", () => {
+	it.each(["http://localhost:3000/simple", "https://app.localhost:5173", "http://127.0.0.1:8080", "http://[::1]:4173"])(
+		"accepts local development URL %s",
+		(url) => {
+			expect(isLoopbackPreviewURL(url)).toBe(true);
+		},
+	);
+
+	it.each(["https://example.com", "file:///tmp/index.html", "javascript:alert(1)", "not a URL"])(
+		"rejects non-loopback URL %s",
+		(url) => {
+			expect(isLoopbackPreviewURL(url)).toBe(false);
+		},
+	);
+});
+
+describe("terminal link preview", () => {
+	it("mirrors a localhost terminal link into the session Browser preview", async () => {
+		const view = renderPane(worker);
+		try {
+			expect(terminalLinkHandler).toBeTypeOf("function");
+			act(() => terminalLinkHandler?.("http://localhost:3000/simple"));
+
+			await waitFor(() =>
+				expect(postMock).toHaveBeenCalledWith("/api/v1/sessions/{sessionId}/preview", {
+					params: { path: { sessionId: "sess-1" } },
+					body: { url: "http://localhost:3000/simple" },
+				}),
+			);
+		} finally {
+			view.restore();
+		}
+	});
+
+	it("does not mirror an external terminal link into the Browser preview", () => {
+		const view = renderPane(worker);
+		try {
+			act(() => terminalLinkHandler?.("https://example.com"));
+			expect(postMock).not.toHaveBeenCalled();
+		} finally {
+			view.restore();
+		}
 	});
 });

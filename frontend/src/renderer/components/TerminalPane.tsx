@@ -129,6 +129,23 @@ export function providerScrollsByKeyboard(provider?: string): boolean {
 	return provider ? KEYBOARD_SCROLL_PROVIDERS.has(provider) : false;
 }
 
+export function isLoopbackPreviewURL(value: string): boolean {
+	try {
+		const url = new URL(value);
+		if (url.protocol !== "http:" && url.protocol !== "https:") return false;
+		const hostname = url.hostname.toLowerCase();
+		return (
+			hostname === "localhost" ||
+			hostname.endsWith(".localhost") ||
+			hostname === "127.0.0.1" ||
+			hostname === "::1" ||
+			hostname === "[::1]"
+		);
+	} catch {
+		return false;
+	}
+}
+
 function bannerText(state: TerminalSessionState, error?: string): string | undefined {
 	if (state === "reattaching") return "Terminal disconnected — reattaching…";
 	if (state === "error") return `Terminal error: ${error ?? "connection failed"}`;
@@ -162,6 +179,23 @@ function AttachedTerminal({ session, theme, daemonReady, terminalTarget, fontSiz
 		console.error("xterm failed to initialize", err);
 		setInitFailed(true);
 	}, []);
+	const handleLinkOpen = useCallback(
+		(uri: string) => {
+			if (!session?.id || !isLoopbackPreviewURL(uri)) return;
+			void (async () => {
+				const { error: previewError } = await apiClient.POST("/api/v1/sessions/{sessionId}/preview", {
+					params: { path: { sessionId: session.id } },
+					body: { url: uri },
+				});
+				if (previewError) {
+					console.warn("Unable to open terminal link in Browser preview", previewError);
+					return;
+				}
+				await queryClient.invalidateQueries({ queryKey: workspaceQueryKey });
+			})();
+		},
+		[queryClient, session?.id],
+	);
 	const restoreSession = useCallback(async () => {
 		if (!session?.id || !canRestoreSession || isRestoring) return;
 		setIsRestoring(true);
@@ -237,6 +271,7 @@ function AttachedTerminal({ session, theme, daemonReady, terminalTarget, fontSiz
 					ariaLabel="Session terminal"
 					fontSize={fontSize}
 					onError={handleInitError}
+					onLinkOpen={handleLinkOpen}
 					onReady={handleReady}
 					paneScrollsByKeyboard={providerScrollsByKeyboard(provider)}
 					theme={theme}

@@ -47,6 +47,8 @@ export type XtermTerminalProps = {
 	paneScrollsByKeyboard?: boolean;
 	/** Terminal construction failed; the owner decides how to surface it. */
 	onError?: (error: unknown) => void;
+	/** Called after a terminal hyperlink is opened in the OS browser. */
+	onLinkOpen?: (uri: string) => void;
 	/**
 	 * The terminal is open in the DOM and ready to be attached to a PTY. The
 	 * handle stays valid until unmount; cols/rows are live getters.
@@ -289,6 +291,7 @@ export function XtermTerminal(props: XtermTerminalProps) {
 		term.loadAddon(
 			new WebLinksAddon((_event, uri) => {
 				window.open(uri, "_blank", "noopener");
+				callbacksRef.current.onLinkOpen?.(uri);
 			}),
 		);
 		term.loadAddon(new SearchAddon());
