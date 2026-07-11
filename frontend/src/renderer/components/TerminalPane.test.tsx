@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { WorkspaceSession } from "../types/workspace";
-import { isLoopbackPreviewURL, TerminalPane, providerScrollsByKeyboard } from "./TerminalPane";
+import { TerminalPane, providerScrollsByKeyboard } from "./TerminalPane";
 
 const postMock = vi.fn();
 let terminalLinkHandler: ((uri: string) => void) | undefined;
@@ -64,6 +64,7 @@ function renderPane(session?: WorkspaceSession) {
 	);
 	return {
 		...result,
+		queryClient,
 		restore: () => {
 			window.ao = previousAO;
 		},
@@ -131,39 +132,26 @@ describe("providerScrollsByKeyboard", () => {
 	});
 });
 
-describe("isLoopbackPreviewURL", () => {
-	it.each(["http://localhost:3000/simple", "https://app.localhost:5173", "http://127.0.0.1:8080", "http://[::1]:4173"])(
-		"accepts local development URL %s",
-		(url) => {
-			expect(isLoopbackPreviewURL(url)).toBe(true);
-		},
-	);
-
-	it.each(["https://example.com", "file:///tmp/index.html", "javascript:alert(1)", "not a URL"])(
-		"rejects non-loopback URL %s",
-		(url) => {
-			expect(isLoopbackPreviewURL(url)).toBe(false);
-		},
-	);
-});
-
 describe("terminal link preview", () => {
-	it("mirrors a localhost terminal link into the session Browser preview", async () => {
-		const view = renderPane(worker);
-		try {
-			expect(terminalLinkHandler).toBeTypeOf("function");
-			act(() => terminalLinkHandler?.("http://localhost:3000/simple"));
+	it.each(["http://localhost:3000/simple", "https://app.localhost:5173", "http://127.0.0.1:8080", "http://[::1]:4173"])(
+		"mirrors worker loopback link %s into the session Browser preview",
+		async (url) => {
+			const view = renderPane(worker);
+			try {
+				expect(terminalLinkHandler).toBeTypeOf("function");
+				act(() => terminalLinkHandler?.(url));
 
-			await waitFor(() =>
-				expect(postMock).toHaveBeenCalledWith("/api/v1/sessions/{sessionId}/preview", {
-					params: { path: { sessionId: "sess-1" } },
-					body: { url: "http://localhost:3000/simple" },
-				}),
-			);
-		} finally {
-			view.restore();
-		}
-	});
+				await waitFor(() =>
+					expect(postMock).toHaveBeenCalledWith("/api/v1/sessions/{sessionId}/preview", {
+						params: { path: { sessionId: "sess-1" } },
+						body: { url },
+					}),
+				);
+			} finally {
+				view.restore();
+			}
+		},
+	);
 
 	it("does not mirror an external terminal link into the Browser preview", () => {
 		const view = renderPane(worker);
@@ -171,6 +159,59 @@ describe("terminal link preview", () => {
 			act(() => terminalLinkHandler?.("https://example.com"));
 			expect(postMock).not.toHaveBeenCalled();
 		} finally {
+			view.restore();
+		}
+	});
+
+	it("does not POST without a selected session", () => {
+		const view = renderPane();
+		try {
+			act(() => terminalLinkHandler?.("http://localhost:3000"));
+			expect(postMock).not.toHaveBeenCalled();
+		} finally {
+			view.restore();
+		}
+	});
+
+	it("does not mirror orchestrator links because orchestrators have no Browser inspector", () => {
+		const view = renderPane(orchestrator);
+		try {
+			act(() => terminalLinkHandler?.("http://localhost:3000"));
+			expect(postMock).not.toHaveBeenCalled();
+		} finally {
+			view.restore();
+		}
+	});
+
+	it("does not invalidate workspace data when the preview endpoint returns an error", async () => {
+		postMock.mockResolvedValueOnce({ error: { code: "INVALID_PREVIEW_URL" } });
+		const warning = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+		const view = renderPane(worker);
+		const invalidate = vi.spyOn(view.queryClient, "invalidateQueries");
+		try {
+			act(() => terminalLinkHandler?.("http://localhost:3000"));
+			await waitFor(() => expect(warning).toHaveBeenCalled());
+			expect(invalidate).not.toHaveBeenCalled();
+		} finally {
+			warning.mockRestore();
+			view.restore();
+		}
+	});
+
+	it("handles a rejected preview request without an unhandled rejection", async () => {
+		const error = new Error("daemon unavailable");
+		postMock.mockRejectedValueOnce(error);
+		const warning = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+		const view = renderPane(worker);
+		const invalidate = vi.spyOn(view.queryClient, "invalidateQueries");
+		try {
+			act(() => terminalLinkHandler?.("http://localhost:3000"));
+			await waitFor(() =>
+				expect(warning).toHaveBeenCalledWith("Unable to open terminal link in Browser preview", error),
+			);
+			expect(invalidate).not.toHaveBeenCalled();
+		} finally {
+			warning.mockRestore();
 			view.restore();
 		}
 	});

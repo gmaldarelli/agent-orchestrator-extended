@@ -5,6 +5,7 @@ import type { WorkspaceSession } from "../types/workspace";
 import type { Theme } from "../stores/ui-store";
 import { useTerminalSession, type AttachableTerminal, type TerminalSessionState } from "../hooks/useTerminalSession";
 import { apiClient, apiErrorMessage } from "../lib/api-client";
+import { isLoopbackHostname } from "../lib/loopback";
 import { workspaceQueryKey } from "../hooks/useWorkspaceQuery";
 import { XtermTerminal } from "./XtermTerminal";
 import { RestoreUnavailableDialog } from "./RestoreUnavailableDialog";
@@ -129,18 +130,11 @@ export function providerScrollsByKeyboard(provider?: string): boolean {
 	return provider ? KEYBOARD_SCROLL_PROVIDERS.has(provider) : false;
 }
 
-export function isLoopbackPreviewURL(value: string): boolean {
+function isLoopbackPreviewURL(value: string): boolean {
 	try {
 		const url = new URL(value);
 		if (url.protocol !== "http:" && url.protocol !== "https:") return false;
-		const hostname = url.hostname.toLowerCase();
-		return (
-			hostname === "localhost" ||
-			hostname.endsWith(".localhost") ||
-			hostname === "127.0.0.1" ||
-			hostname === "::1" ||
-			hostname === "[::1]"
-		);
+		return isLoopbackHostname(url.hostname);
 	} catch {
 		return false;
 	}
@@ -181,20 +175,24 @@ function AttachedTerminal({ session, theme, daemonReady, terminalTarget, fontSiz
 	}, []);
 	const handleLinkOpen = useCallback(
 		(uri: string) => {
-			if (!session?.id || !isLoopbackPreviewURL(uri)) return;
+			if (!session?.id || session.kind !== "worker" || !isLoopbackPreviewURL(uri)) return;
 			void (async () => {
-				const { error: previewError } = await apiClient.POST("/api/v1/sessions/{sessionId}/preview", {
-					params: { path: { sessionId: session.id } },
-					body: { url: uri },
-				});
-				if (previewError) {
-					console.warn("Unable to open terminal link in Browser preview", previewError);
-					return;
+				try {
+					const { error: previewError } = await apiClient.POST("/api/v1/sessions/{sessionId}/preview", {
+						params: { path: { sessionId: session.id } },
+						body: { url: uri },
+					});
+					if (previewError) {
+						console.warn("Unable to open terminal link in Browser preview", previewError);
+						return;
+					}
+					await queryClient.invalidateQueries({ queryKey: workspaceQueryKey });
+				} catch (error) {
+					console.warn("Unable to open terminal link in Browser preview", error);
 				}
-				await queryClient.invalidateQueries({ queryKey: workspaceQueryKey });
 			})();
 		},
-		[queryClient, session?.id],
+		[queryClient, session?.id, session?.kind],
 	);
 	const restoreSession = useCallback(async () => {
 		if (!session?.id || !canRestoreSession || isRestoring) return;
