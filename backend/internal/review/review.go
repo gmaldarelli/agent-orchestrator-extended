@@ -381,12 +381,18 @@ func (e *Engine) Cancel(ctx stdctx.Context, workerID domain.SessionID) (CancelRe
 	if !ok || review.ReviewerHandleID == "" {
 		return CancelResult{}, fmt.Errorf("%w: reviewer for worker session %q", ErrNotFound, workerID)
 	}
-	if err := e.launcher.Cancel(ctx, review.ReviewerHandleID, review.Harness); err != nil {
-		return CancelResult{}, err
-	}
 	running, err := e.store.ListRunningReviewRunsBySession(ctx, workerID)
 	if err != nil {
 		return CancelResult{}, err
+	}
+	if err := e.launcher.Cancel(ctx, review.ReviewerHandleID, review.Harness); err != nil {
+		alive, aliveErr := e.launcher.Alive(ctx, review.ReviewerHandleID)
+		if aliveErr != nil {
+			return CancelResult{}, err
+		}
+		if alive {
+			return CancelResult{}, err
+		}
 	}
 	if _, err := e.store.CancelRunningReviewRunsBySession(ctx, workerID, "cancelled by user"); err != nil {
 		return CancelResult{}, err

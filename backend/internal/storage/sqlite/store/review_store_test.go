@@ -103,6 +103,38 @@ func TestInsertReviewRunAllowsRerunAfterChangesRequested(t *testing.T) {
 	}
 }
 
+func TestInsertReviewRunAllowsRerunAfterTerminalEmptyVerdict(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	seedProject(t, s, "mer")
+	rec, err := s.CreateSession(ctx, sampleRecord("mer"))
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+	now := time.Now().UTC().Truncate(time.Second)
+	if err := s.UpsertReview(ctx, domain.Review{
+		ID: "rev-1", SessionID: rec.ID, ProjectID: rec.ProjectID,
+		Harness: domain.ReviewerClaudeCode, CreatedAt: now, UpdatedAt: now,
+	}); err != nil {
+		t.Fatalf("upsert review: %v", err)
+	}
+	run := domain.ReviewRun{
+		ID: "run-1", ReviewID: "rev-1", SessionID: rec.ID, Harness: domain.ReviewerClaudeCode,
+		PRURL: "https://example/pr/1", TargetSHA: "sha1", Status: domain.ReviewRunComplete, Verdict: domain.VerdictNone, CreatedAt: now,
+	}
+	if err := s.InsertReviewRun(ctx, run); err != nil {
+		t.Fatalf("first insert: %v", err)
+	}
+
+	rerun := run
+	rerun.ID = "run-2"
+	rerun.Status = domain.ReviewRunRunning
+	rerun.CreatedAt = now.Add(time.Second)
+	if err := s.InsertReviewRun(ctx, rerun); err != nil {
+		t.Fatalf("rerun after terminal empty-verdict insert: %v", err)
+	}
+}
+
 func TestReviewUpsertReusesRowAndRunRoundTrip(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()

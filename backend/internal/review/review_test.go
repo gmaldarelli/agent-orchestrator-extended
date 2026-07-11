@@ -51,7 +51,8 @@ func (f *fakeStore) InsertReviewRun(_ context.Context, r domain.ReviewRun) error
 			existing.TargetSHA != "" &&
 			existing.Status != domain.ReviewRunFailed &&
 			existing.Status != domain.ReviewRunCancelled &&
-			existing.Verdict != domain.VerdictChangesRequested {
+			(existing.Status == domain.ReviewRunRunning ||
+				(existing.Verdict != domain.VerdictNone && existing.Verdict != domain.VerdictChangesRequested)) {
 			return domain.ErrDuplicateReviewRun
 		}
 	}
@@ -155,6 +156,8 @@ type fakeLauncher struct {
 	spawnCount       int
 	notified         bool
 	cancelled        bool
+	cancelErr        error
+	aliveErr         error
 	gotSpec          LaunchSpec
 	gotHandle        string
 	cancelledHandle  string
@@ -182,13 +185,13 @@ func (f *fakeLauncher) Notify(_ context.Context, handleID string, spec LaunchSpe
 	return f.notifyErr
 }
 func (f *fakeLauncher) Alive(_ context.Context, _ string) (bool, error) {
-	return f.alive || f.spawned, nil
+	return f.alive || f.spawned, f.aliveErr
 }
 func (f *fakeLauncher) Cancel(_ context.Context, handleID string, harness domain.ReviewerHarness) error {
 	f.cancelled = true
 	f.cancelledHandle = handleID
 	f.cancelledHarness = harness
-	return nil
+	return f.cancelErr
 }
 
 func liveWorker() domain.SessionRecord {
@@ -280,6 +283,51 @@ func TestCancelInterruptsReviewerAndCancelsRunningRuns(t *testing.T) {
 	}
 	if res.Reviews[0].Status == ReviewStateRunning {
 		t.Fatalf("review state still running: %+v", res.Reviews[0])
+	}
+}
+
+func TestCancelMarksRunsCancelledWhenReviewerHandleIsGone(t *testing.T) {
+	store := &fakeStore{
+		review: &domain.Review{ID: "rev-1", SessionID: "mer-1", Harness: domain.ReviewerCodex, ReviewerHandleID: "review-mer-1"},
+		runs: []domain.ReviewRun{{
+			ID: "run-1", ReviewID: "rev-1", SessionID: "mer-1",
+			PRURL: "https://github.com/o/r/pull/1", TargetSHA: "sha1", Status: domain.ReviewRunRunning,
+		}},
+	}
+	launcher := &fakeLauncher{cancelErr: errors.New("runtime: session not found")}
+	eng := newEngineForTest(store, fakeSessions{rec: liveWorker(), ok: true}, prAt("sha1"), fakeProjects{}, launcher)
+
+	res, err := eng.Cancel(context.Background(), "mer-1")
+	if err != nil {
+		t.Fatalf("Cancel: %v", err)
+	}
+	if !launcher.cancelled {
+		t.Fatal("expected launcher cancellation to be attempted")
+	}
+	if got := store.runs[0]; got.Status != domain.ReviewRunCancelled {
+		t.Fatalf("run not marked cancelled after stale handle: %+v", got)
+	}
+	if len(res.CancelledRuns) != 1 || res.CancelledRuns[0].ID != "run-1" {
+		t.Fatalf("cancelled runs = %+v", res.CancelledRuns)
+	}
+}
+
+func TestCancelKeepsRunsRunningWhenReviewerCancelFailsAndHandleIsAlive(t *testing.T) {
+	store := &fakeStore{
+		review: &domain.Review{ID: "rev-1", SessionID: "mer-1", Harness: domain.ReviewerCodex, ReviewerHandleID: "review-mer-1"},
+		runs: []domain.ReviewRun{{
+			ID: "run-1", ReviewID: "rev-1", SessionID: "mer-1",
+			PRURL: "https://github.com/o/r/pull/1", TargetSHA: "sha1", Status: domain.ReviewRunRunning,
+		}},
+	}
+	launcher := &fakeLauncher{alive: true, cancelErr: errors.New("interrupt failed")}
+	eng := newEngineForTest(store, fakeSessions{rec: liveWorker(), ok: true}, prAt("sha1"), fakeProjects{}, launcher)
+
+	if _, err := eng.Cancel(context.Background(), "mer-1"); err == nil {
+		t.Fatal("Cancel err = nil, want interrupt failure")
+	}
+	if got := store.runs[0]; got.Status != domain.ReviewRunRunning {
+		t.Fatalf("run should remain running when reviewer is still alive: %+v", got)
 	}
 }
 
@@ -389,6 +437,29 @@ func TestTriggerReusesRunningRowWithNoVerdict(t *testing.T) {
 	}
 	if got := store.runs[0]; got.Status != domain.ReviewRunRunning {
 		t.Fatalf("running row should remain running, got %+v", got)
+	}
+}
+
+func TestTriggerRetriesTerminalRowWithNoVerdict(t *testing.T) {
+	store := &fakeStore{
+		review: &domain.Review{ID: "rev-1", SessionID: "mer-1", ReviewerHandleID: "review-mer-1"},
+		runs: []domain.ReviewRun{{
+			ID: "run-empty-verdict", SessionID: "mer-1", PRURL: "https://github.com/o/r/pull/1", TargetSHA: "sha1",
+			Status: domain.ReviewRunComplete, Verdict: domain.VerdictNone,
+		}},
+	}
+	launcher := &fakeLauncher{handle: "review-mer-2"}
+	eng := newEngineForTest(store, fakeSessions{rec: liveWorker(), ok: true}, prAt("sha1"), fakeProjects{}, launcher)
+
+	res, err := eng.Trigger(context.Background(), "mer-1")
+	if err != nil {
+		t.Fatalf("Trigger: %v", err)
+	}
+	if !res.Created || res.Run.ID == "run-empty-verdict" {
+		t.Fatalf("expected retry to create a new run, got %+v", res)
+	}
+	if len(store.runs) != 2 || !launcher.spawned {
+		t.Fatalf("expected new launch/run after terminal empty-verdict row: launched=%v runs=%+v", launcher.spawned, store.runs)
 	}
 }
 
