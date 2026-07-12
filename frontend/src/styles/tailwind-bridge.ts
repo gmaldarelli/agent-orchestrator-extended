@@ -3,15 +3,7 @@
  */
 
 import { kebab, layoutCssVarName } from "./css-utils";
-import {
-	animation,
-	breakpoint,
-	layoutIconKeys,
-	layoutSpacingKeys,
-	letterSpacing,
-	radius,
-	space,
-} from "./primitives";
+import { animation, breakpoint, layoutIconKeys, layoutSpacingKeys, letterSpacing, radius, space } from "./primitives";
 
 // ---------------------------------------------------------------------------
 // @theme bridge — short names → semantic vars (avoids Tailwind :root collisions)
@@ -70,9 +62,7 @@ function tokenScaleThemeVars(prefix: string, cssPrefix: string, keys: readonly s
 }
 
 function layoutSpacingThemeVars(): Record<string, string> {
-	return Object.fromEntries(
-		layoutSpacingKeys.map((key) => [`spacing-${kebab(key)}`, varRef(layoutCssVarName(key))]),
-	);
+	return Object.fromEntries(layoutSpacingKeys.map((key) => [`spacing-${kebab(key)}`, varRef(layoutCssVarName(key))]));
 }
 
 function layoutIconThemeVars(): Record<string, string> {

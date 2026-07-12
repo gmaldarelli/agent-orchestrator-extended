@@ -240,9 +240,7 @@ describe("design-system.generated.css", () => {
 	});
 
 	it("derives layout icon keys from layout in definition order", () => {
-		const iconKeysFromLayout = (Object.keys(layout) as (keyof typeof layout)[]).filter((key) =>
-			isLayoutIconKey(key),
-		);
+		const iconKeysFromLayout = (Object.keys(layout) as (keyof typeof layout)[]).filter((key) => isLayoutIconKey(key));
 		expect(layoutIconKeys).toEqual(iconKeysFromLayout);
 	});
 });

@@ -59,16 +59,11 @@ function projectAccentCssName(key: string): string {
 	return `color-project-accent-${key}`;
 }
 
-function tokenVars(
-	entries: Array<[cssName: string, value: string]>,
-): string[] {
+function tokenVars(entries: Array<[cssName: string, value: string]>): string[] {
 	return entries.map(([cssName, value]) => `\t--${cssName}: ${value};`);
 }
 
-function recordVars(
-	record: Record<string, string>,
-	nameForKey: (key: string) => string,
-): string[] {
+function recordVars(record: Record<string, string>, nameForKey: (key: string) => string): string[] {
 	return tokenVars(Object.entries(record).map(([key, value]) => [nameForKey(key), value]));
 }
 
@@ -89,9 +84,7 @@ function projectAccentVars(record: Record<string, string>): string[] {
 }
 
 function layoutVars(record: Record<string, string>): string[] {
-	return tokenVars(
-		Object.entries(record).map(([key, value]) => [layoutCssVarName(key), value]),
-	);
+	return tokenVars(Object.entries(record).map(([key, value]) => [layoutCssVarName(key), value]));
 }
 
 function fontSizeVars(): string[] {
@@ -115,9 +108,7 @@ function radiusVars(): string[] {
 }
 
 function bridgeVars(): string[] {
-	return tokenVars(
-		Object.entries(bridgeAlias).map(([key, target]) => [`bridge-${kebab(key)}`, `var(--${target})`]),
-	);
+	return tokenVars(Object.entries(bridgeAlias).map(([key, target]) => [`bridge-${kebab(key)}`, `var(--${target})`]));
 }
 
 function fontAliasVars(): string[] {

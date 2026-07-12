@@ -16,8 +16,7 @@ function boundedDialogWidth(name: string, sizeCssVar: string): TailwindUtility {
 
 function colorMixBackground(purpleOrSurface: "purple" | "surface"): TailwindUtility {
 	const colorVar = purpleOrSurface === "purple" ? "--color-purple" : "--color-bg-primary";
-	const mixVar =
-		purpleOrSurface === "purple" ? "--color-mix-purple-subtle" : "--color-mix-surface-faint";
+	const mixVar = purpleOrSurface === "purple" ? "--color-mix-purple-subtle" : "--color-mix-surface-faint";
 	return {
 		name: purpleOrSurface === "purple" ? "bg-purple-subtle" : "bg-surface-faint",
 		rules: [`background-color: color-mix(in srgb, var(${colorVar}) var(${mixVar}), transparent);`],
