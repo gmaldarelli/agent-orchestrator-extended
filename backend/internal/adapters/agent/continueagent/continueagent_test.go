@@ -135,7 +135,7 @@ func TestGetLaunchCommandAppendsInlineRule(t *testing.T) {
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
-	want := []string{"cn", "--print", "--rule", "follow AO rules", "--", "fix it"}
+	want := []string{"cn", "--rule", "follow AO rules", "--", "fix it"}
 	if !reflect.DeepEqual(cmd, want) {
 		t.Fatalf("cmd = %#v, want %#v", cmd, want)
 	}
@@ -150,7 +150,7 @@ func TestGetLaunchCommandAppendsRuleFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
-	want := []string{"cn", "--print", "--rule", "/tmp/system.md", "--", "fix it"}
+	want := []string{"cn", "--rule", "/tmp/system.md", "--", "fix it"}
 	if !reflect.DeepEqual(cmd, want) {
 		t.Fatalf("cmd = %#v, want %#v", cmd, want)
 	}
@@ -266,7 +266,7 @@ func TestGetRestoreCommandAppendsRule(t *testing.T) {
 	if !ok {
 		t.Fatal("ok=false, want true")
 	}
-	want := []string{"cn", "--print", "--rule", "restore rules", "--fork", "sess-xyz"}
+	want := []string{"cn", "--rule", "restore rules", "--fork", "sess-xyz"}
 	if !reflect.DeepEqual(cmd, want) {
 		t.Fatalf("cmd = %#v, want %#v", cmd, want)
 	}

@@ -14,10 +14,10 @@
 // callbacks through the existing "ao hooks claude-code <evt>" dispatcher — no
 // Continue-specific native hook config or activity deriver is needed.
 //
-// Launch is headless via `cn --print [--auto|--readonly] <prompt>`; the prompt
-// is the positional argument (in-command delivery). Restore continues a specific
-// native session by id with `cn --fork <sessionId>` (Continue's `--resume` only
-// continues the *last* session, so it cannot target a particular AO session).
+// Launch is interactive via `cn [--auto|--readonly] [--rule <rule>] [-- <prompt>]`.
+// Restore continues a specific native session by id with `cn --fork <sessionId>`
+// (Continue's `--resume` only continues the *last* session, so it cannot target
+// a particular AO session).
 package continueagent
 
 import (
@@ -85,12 +85,12 @@ func (p *Plugin) GetConfigSpec(ctx context.Context) (ports.ConfigSpec, error) {
 	return ports.ConfigSpec{}, nil
 }
 
-// GetLaunchCommand builds `cn --print [--auto|--readonly] <prompt>`.
+// GetLaunchCommand builds the Continue CLI argv for a fresh launch.
 //
-// `--print` runs Continue in non-interactive (headless) mode. The prompt is the
-// positional argument and is delivered in-command. Permission flags map AO's 4
-// modes onto Continue's two booleans (--auto / --readonly); Default and
-// AcceptEdits emit no flag so Continue resolves behavior from the user's config.
+// AO sessions are long-lived terminal sessions, so prompted and promptless
+// launches both stay interactive as `cn ...`. Permission flags map AO's 4 modes
+// onto Continue's two booleans (--auto / --readonly); Default and AcceptEdits
+// emit no flag so Continue resolves behavior from the user's config.
 func (p *Plugin) GetLaunchCommand(ctx context.Context, cfg ports.LaunchConfig) (cmd []string, err error) {
 	binary, err := p.continueBinary(ctx)
 	if err != nil {
@@ -98,9 +98,6 @@ func (p *Plugin) GetLaunchCommand(ctx context.Context, cfg ports.LaunchConfig) (
 	}
 
 	cmd = []string{binary}
-	if cfg.SystemPrompt != "" || cfg.SystemPromptFile != "" {
-		cmd = append(cmd, "--print")
-	}
 	appendApprovalFlags(&cmd, cfg.Permissions)
 	appendSystemPromptRule(&cmd, cfg.SystemPrompt, cfg.SystemPromptFile)
 
@@ -161,9 +158,6 @@ func (p *Plugin) GetRestoreCommand(ctx context.Context, cfg ports.RestoreConfig)
 
 	cmd = make([]string, 0, 5)
 	cmd = append(cmd, binary)
-	if cfg.SystemPrompt != "" || cfg.SystemPromptFile != "" {
-		cmd = append(cmd, "--print")
-	}
 	appendApprovalFlags(&cmd, cfg.Permissions)
 	appendSystemPromptRule(&cmd, cfg.SystemPrompt, cfg.SystemPromptFile)
 	cmd = append(cmd, "--fork", agentSessionID)
