@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import gsap from "gsap";
 import { useGSAP } from "@gsap/react";
+import { DESKTOP_DOWNLOADS, getDownloadOptions, getDownloadTarget } from "../lib/desktop-downloads";
 import { ScaledMockup } from "./ScaledMockup";
 
 if (typeof window !== "undefined") {
@@ -45,42 +46,6 @@ function StarIcon({ className = "" }: { className?: string }) {
 }
 
 const GITHUB_REPO_API_URL = "https://api.github.com/repos/AgentWrapper/agent-orchestrator";
-const RELEASE_DOWNLOAD_BASE = "https://github.com/AgentWrapper/agent-orchestrator/releases/latest/download";
-
-const desktopDownloads = [
-	{ label: "macOS (Apple silicon)", href: `${RELEASE_DOWNLOAD_BASE}/agent-orchestrator-darwin-arm64.zip` },
-	{ label: "macOS (Intel)", href: `${RELEASE_DOWNLOAD_BASE}/agent-orchestrator-darwin-x64.zip` },
-	{ label: "Windows", href: `${RELEASE_DOWNLOAD_BASE}/agent-orchestrator-win32-x64.exe` },
-	{ label: "Linux", href: `${RELEASE_DOWNLOAD_BASE}/agent-orchestrator-linux-x64.AppImage` },
-];
-
-function isPortableDevice() {
-	if (typeof navigator === "undefined" || typeof window === "undefined") return false;
-	const platform = `${navigator.platform} ${navigator.userAgent}`.toLowerCase();
-	return (
-		/android|iphone|ipad|ipod|mobile|tablet/.test(platform) ||
-		(platform.includes("mac") && navigator.maxTouchPoints > 1) ||
-		window.innerWidth <= 1024
-	);
-}
-
-function getDownloadTarget() {
-	if (typeof navigator === "undefined") return null;
-	const platform = `${navigator.platform} ${navigator.userAgent}`.toLowerCase();
-
-	if (isPortableDevice()) return null;
-	if (platform.includes("win")) return { label: "Download for Windows", href: desktopDownloads[2].href };
-	if (platform.includes("linux") || platform.includes("x11"))
-		return { label: "Download for Linux", href: desktopDownloads[3].href };
-	return null;
-}
-
-function getDownloadOptions() {
-	if (typeof navigator === "undefined") return desktopDownloads;
-	const platform = `${navigator.platform} ${navigator.userAgent}`.toLowerCase();
-	const isTouchMac = platform.includes("mac") && navigator.maxTouchPoints > 1;
-	return platform.includes("mac") && !isTouchMac ? desktopDownloads.slice(0, 2) : desktopDownloads;
-}
 
 function formatCompactNumber(value: number): string {
 	if (value >= 1_000_000) {
@@ -640,7 +605,7 @@ function HeroDashboardMockup() {
 										className="hero-pressable inline-flex h-[34px] items-center gap-1.5 rounded-[7px] bg-[color:var(--accent)] px-[15px] text-[13px] font-semibold leading-none text-[#11140c] hover:brightness-110"
 									>
 										<NetworkIcon className="h-3.5 w-3.5" />
-										Orchestrator
+										Spawn Orchestrator
 									</button>
 								</div>
 							</div>
@@ -1105,19 +1070,13 @@ export function LandingHero() {
 	const containerRef = useRef<HTMLDivElement>(null);
 	const [starCount, setStarCount] = useState<string | null>(null);
 	const [downloadTarget, setDownloadTarget] = useState<ReturnType<typeof getDownloadTarget>>(null);
-	const [downloadOptions, setDownloadOptions] = useState(desktopDownloads);
-	const [showInstallGuide, setShowInstallGuide] = useState(false);
+	const [downloadOptions, setDownloadOptions] = useState<readonly (typeof DESKTOP_DOWNLOADS)[number][]>(
+		DESKTOP_DOWNLOADS,
+	);
 
 	useEffect(() => {
-		const updateDownloadTarget = () => {
-			setShowInstallGuide(isPortableDevice());
-			setDownloadTarget(getDownloadTarget());
-			setDownloadOptions(getDownloadOptions());
-		};
-
-		updateDownloadTarget();
-		window.addEventListener("resize", updateDownloadTarget);
-		return () => window.removeEventListener("resize", updateDownloadTarget);
+		setDownloadTarget(getDownloadTarget(navigator));
+		setDownloadOptions(getDownloadOptions(navigator));
 	}, []);
 
 	useEffect(() => {
@@ -1211,16 +1170,7 @@ export function LandingHero() {
 						</span>
 					</h1>
 					<div className="gsap-reveal mt-8 flex w-full flex-col items-stretch justify-center gap-3 sm:w-auto sm:flex-row sm:items-center">
-						{showInstallGuide ? (
-							<a
-								href="/docs/installation"
-								className="hero-pressable group inline-flex h-12 w-full items-center justify-center gap-2 rounded-[6px] border border-[color:var(--accent)] bg-[color:var(--accent)] px-6 text-[15px] font-semibold text-[#11140c] hover:brightness-110 sm:w-auto"
-								style={{ color: "#11140c" }}
-							>
-								Installation guide
-								<ArrowRightIcon className="h-4 w-4 transition-transform duration-[450ms] group-hover:translate-x-1" />
-							</a>
-						) : downloadTarget ? (
+						{downloadTarget ? (
 							<a
 								href={downloadTarget.href}
 								className="hero-pressable group inline-flex h-12 w-full items-center justify-center gap-2 rounded-[6px] border border-[color:var(--accent)] bg-[color:var(--accent)] px-6 text-[15px] font-semibold text-[#11140c] hover:brightness-110 sm:w-auto"
@@ -1237,7 +1187,7 @@ export function LandingHero() {
 								>
 									<DownloadIcon className="h-4 w-4" />
 									Desktop downloads
-									<ArrowRightIcon className="h-4 w-4 rotate-90 transition-transform group-open/download:-rotate-90" />
+									<ArrowRightIcon className="h-4 w-4 rotate-90 transition-transform duration-150 group-open/download:-rotate-90 motion-reduce:transition-none" />
 								</summary>
 								<div className="absolute left-0 right-0 top-[calc(100%+8px)] z-30 overflow-hidden rounded-lg border border-[color:var(--border-strong)] bg-[color:var(--bg-elevated)] p-1.5 text-left shadow-2xl sm:min-w-[260px]">
 									<p className="px-3 py-2 text-xs leading-relaxed text-[color:var(--fg-muted)]">
