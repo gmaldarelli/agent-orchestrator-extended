@@ -165,7 +165,7 @@ function AttachedTerminal({ session, theme, daemonReady, terminalTarget, fontSiz
 	}, []);
 	const handleLinkOpen = useCallback(
 		(uri: string) => {
-			if (!session?.id || session.kind !== "worker") return;
+			if (!session?.id || session.kind !== "worker" || session.status === "terminated") return;
 			try {
 				const url = new URL(uri);
 				if ((url.protocol !== "http:" && url.protocol !== "https:") || !isLoopbackHostname(url.hostname)) return;
@@ -188,7 +188,7 @@ function AttachedTerminal({ session, theme, daemonReady, terminalTarget, fontSiz
 				}
 			})();
 		},
-		[queryClient, session?.id, session?.kind],
+		[queryClient, session?.id, session?.kind, session?.status],
 	);
 	const restoreSession = useCallback(async () => {
 		if (!session?.id || !canRestoreSession || isRestoring) return;

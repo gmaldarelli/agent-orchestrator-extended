@@ -183,6 +183,16 @@ describe("terminal link preview", () => {
 		}
 	});
 
+	it("does not mirror links for terminated workers because their Browser inspector is cleared", () => {
+		const view = renderPane({ ...worker, status: "terminated" });
+		try {
+			act(() => terminalLinkHandler?.("http://localhost:3000"));
+			expect(postMock).not.toHaveBeenCalled();
+		} finally {
+			view.restore();
+		}
+	});
+
 	it("does not invalidate workspace data when the preview endpoint returns an error", async () => {
 		postMock.mockResolvedValueOnce({ error: { code: "INVALID_PREVIEW_URL" } });
 		const warning = vi.spyOn(console, "warn").mockImplementation(() => undefined);
