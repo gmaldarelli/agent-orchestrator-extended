@@ -16,6 +16,7 @@ Start with [architecture.md](architecture.md) for the current backend model and
 | [backend-code-structure.md](backend-code-structure.md) | Package ownership rules for the Go backend: domain, services, ports, adapters, storage, HTTP, CLI, and daemon wiring. |
 | [cli/README.md](cli/README.md)                         | CLI commands and daemon control surface.                                                                              |
 | [STATUS.md](STATUS.md)                                 | What is shipped on `main` today and what is still in flight.                                                          |
+| [onboarding.md](onboarding.md)                         | Step-by-step environment setup, local dev workflow, and contribution conventions for new contributors.                |
 | [stack.md](stack.md)                                   | Accepted library/runtime choices, pending stack decisions, and dependencies explicitly avoided for V1.                |
 
 ## Mental model
