@@ -476,12 +476,26 @@ func (s *Service) TeardownProject(ctx context.Context, project domain.ProjectID)
 		if rec.IsTerminated {
 			continue
 		}
-		if _, err := s.Kill(ctx, rec.ID); err != nil {
-			return err
+		if _, err := s.manager.Kill(ctx, rec.ID); err != nil {
+			if isTeardownTolerable(err) {
+				// stale/missing runtime or workspace: tolerate and continue
+				continue
+			}
+			return toAPIError(err)
 		}
 	}
 	_, err = s.Cleanup(ctx, project)
 	return err
+}
+
+// isTeardownTolerable reports whether a Kill error during project teardown
+// should be tolerated (skipped) rather than aborting project deletion.
+// Stale workspace paths, missing sessions, and dirty-preserved worktrees are
+// legacy states that must not block project removal.
+func isTeardownTolerable(err error) bool {
+	return errors.Is(err, ports.ErrWorkspaceStale) ||
+		errors.Is(err, ports.ErrWorkspaceDirty) ||
+		errors.Is(err, sessionmanager.ErrNotFound)
 }
 
 // List returns sessions as enriched display models after applying API filters.

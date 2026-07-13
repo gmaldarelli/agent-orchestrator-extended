@@ -206,6 +206,7 @@ type fakeCommander struct {
 	sent            []domain.SessionID
 	cleanupProjects []domain.ProjectID
 	killErr         error
+	killErrFn       func(id domain.SessionID) error
 	retireErr       error
 	sendErr         error
 	cleanupErr      error
@@ -232,7 +233,11 @@ func (f *fakeCommander) Restore(context.Context, domain.SessionID) (domain.Sessi
 	return domain.SessionRecord{}, nil
 }
 func (f *fakeCommander) Kill(_ context.Context, id domain.SessionID) (bool, error) {
-	if f.killErr != nil {
+	if f.killErrFn != nil {
+		if err := f.killErrFn(id); err != nil {
+			return false, err
+		}
+	} else if f.killErr != nil {
 		return false, f.killErr
 	}
 	f.killed = append(f.killed, id)
@@ -314,6 +319,51 @@ func TestTeardownProjectStopsOnKillError(t *testing.T) {
 	}
 	if len(fc.cleanupProjects) != 0 {
 		t.Fatalf("cleanup projects = %#v, want none after kill failure", fc.cleanupProjects)
+	}
+}
+
+func TestTeardownProjectToleratesStaleWorkspaceError(t *testing.T) {
+	st := newFakeStore()
+	st.sessions["mer-1"] = domain.SessionRecord{ID: "mer-1", ProjectID: "mer"}
+	st.sessions["mer-2"] = domain.SessionRecord{ID: "mer-2", ProjectID: "mer"}
+	staleErr := fmt.Errorf("worktree gone: %w", ports.ErrWorkspaceStale)
+	fc := &fakeCommander{
+		killErrFn: func(id domain.SessionID) error {
+			if id == "mer-1" {
+				return staleErr
+			}
+			return nil
+		},
+	}
+	svc := &Service{manager: fc, store: st}
+
+	err := svc.TeardownProject(context.Background(), "mer")
+	if err != nil {
+		t.Fatalf("TeardownProject: expected nil error for stale workspace, got %v", err)
+	}
+	// Cleanup must still be called even though mer-1 had a stale workspace error.
+	if len(fc.cleanupProjects) != 1 || fc.cleanupProjects[0] != "mer" {
+		t.Fatalf("cleanup projects = %#v, want [mer]", fc.cleanupProjects)
+	}
+	// mer-2 should have been killed successfully.
+	if len(fc.killed) != 1 || fc.killed[0] != "mer-2" {
+		t.Fatalf("killed = %#v, want only mer-2", fc.killed)
+	}
+}
+
+func TestTeardownProjectToleratesMissingSessionError(t *testing.T) {
+	st := newFakeStore()
+	st.sessions["mer-1"] = domain.SessionRecord{ID: "mer-1", ProjectID: "mer"}
+	notFoundErr := fmt.Errorf("get mer-1: %w", sessionmanager.ErrNotFound)
+	fc := &fakeCommander{killErr: notFoundErr}
+	svc := &Service{manager: fc, store: st}
+
+	err := svc.TeardownProject(context.Background(), "mer")
+	if err != nil {
+		t.Fatalf("TeardownProject: expected nil error for missing session, got %v", err)
+	}
+	if len(fc.cleanupProjects) != 1 || fc.cleanupProjects[0] != "mer" {
+		t.Fatalf("cleanup projects = %#v, want [mer]", fc.cleanupProjects)
 	}
 }
 
