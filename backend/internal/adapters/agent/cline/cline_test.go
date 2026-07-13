@@ -129,6 +129,16 @@ func TestGetPromptDeliveryStrategyIsAfterStart(t *testing.T) {
 	}
 }
 
+func TestPromptReadinessHints(t *testing.T) {
+	hints, err := (&Plugin{}).PromptReadinessHints(context.Background(), ports.LaunchConfig{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hints.Timeout <= 0 || len(hints.Patterns) == 0 {
+		t.Fatalf("hints = %#v, want bounded readiness patterns", hints)
+	}
+}
+
 func TestGetConfigSpecHasNoCustomFieldsYet(t *testing.T) {
 	plugin := &Plugin{}
 
@@ -269,7 +279,8 @@ func TestGetRestoreCommandReadsAgentSessionID(t *testing.T) {
 	plugin := &Plugin{resolvedBinary: "cline"}
 
 	cmd, ok, err := plugin.GetRestoreCommand(context.Background(), ports.RestoreConfig{
-		Permissions: ports.PermissionModeAuto,
+		Permissions:  ports.PermissionModeAuto,
+		SystemPrompt: "restore instructions",
 		Session: ports.SessionRef{
 			Metadata: map[string]string{ports.MetadataKeyAgentSessionID: "session-123"},
 		},
@@ -283,6 +294,7 @@ func TestGetRestoreCommandReadsAgentSessionID(t *testing.T) {
 	want := []string{
 		"cline",
 		"--auto-approve", "true",
+		"-s", "restore instructions",
 		"--id", "session-123",
 	}
 	if !reflect.DeepEqual(cmd, want) {

@@ -1,4 +1,4 @@
-import { httpBase, type ServerConfig } from "./config";
+import { authHeaders, httpBase, type ServerConfig } from "./config";
 import type { AttentionLevel } from "./theme";
 
 // ---- Types (subset of AO's DashboardSession we use on the phone) ------------
@@ -199,7 +199,7 @@ async function req(cfg: ServerConfig, path: string, init?: RequestInit): Promise
 		res = await fetch(url, {
 			...init,
 			signal: controller.signal,
-			headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
+			headers: { ...authHeaders(cfg), "Content-Type": "application/json", ...(init?.headers ?? {}) },
 		});
 	} catch (e) {
 		if ((e as { name?: string })?.name === "AbortError") {
@@ -289,6 +289,40 @@ export async function getPreview(cfg: ServerConfig, id: string): Promise<{ entry
 	const escaped = entry.split("/").map(encodeURIComponent).join("/");
 	const url = `${httpBase(cfg)}${API}/sessions/${encodeURIComponent(id)}/preview/files/${escaped}`;
 	return { entry, url };
+}
+
+// ---- Agent catalog ----------------------------------------------------------
+
+export type AgentInfo = {
+	id: string;
+	label: string;
+	authStatus?: "authorized" | "unauthorized" | "unknown";
+};
+
+export type AgentCatalog = {
+	supported: AgentInfo[];
+	installed: AgentInfo[];
+	authorized: AgentInfo[];
+};
+
+export async function getAgents(cfg: ServerConfig): Promise<AgentCatalog> {
+	const res = await req(cfg, `${API}/agents`);
+	const data = await res.json();
+	return {
+		supported: Array.isArray(data?.supported) ? data.supported : [],
+		installed: Array.isArray(data?.installed) ? data.installed : [],
+		authorized: Array.isArray(data?.authorized) ? data.authorized : [],
+	};
+}
+
+export async function refreshAgents(cfg: ServerConfig): Promise<AgentCatalog> {
+	const res = await req(cfg, `${API}/agents/refresh`, { method: "POST" });
+	const data = await res.json();
+	return {
+		supported: Array.isArray(data?.supported) ? data.supported : [],
+		installed: Array.isArray(data?.installed) ? data.installed : [],
+		authorized: Array.isArray(data?.authorized) ? data.authorized : [],
+	};
 }
 
 // ---- Writes / actions -------------------------------------------------------
