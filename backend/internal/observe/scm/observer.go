@@ -723,9 +723,17 @@ func (o *Observer) discoverNewPRs(ctx context.Context, sessionRepos []sessionRep
 			// dropped (as is an empty head repo from a deleted fork), preserving
 			// the no-misattribution guarantee.
 			eligible := candidatesForHeadRepo(byRepo[repoKey], pr.HeadRepo)
-			sr, ok := matchSession(eligible, pr.SourceBranch)
+			sr, ok, ambiguous := matchSession(eligible, pr.SourceBranch)
 			if !ok {
 				continue
+			}
+			if ambiguous {
+				o.logger.Warn("scm observer: PR branch matches multiple sessions — branch-name collision detected; verify push authorship",
+					"pr", firstNonEmpty(pr.URL, pr.HTMLURL),
+					"source_branch", pr.SourceBranch,
+					"attributed_session", sr.session.ID,
+					"head_repo", pr.HeadRepo,
+				)
 			}
 			known := domain.PullRequest{
 				URL:          firstNonEmpty(pr.URL, pr.HTMLURL),
@@ -790,8 +798,7 @@ func candidatesForHeadRepo(candidates []sessionRepo, headRepo string) []sessionR
 	return out
 }
 
-func matchSession(candidates []sessionRepo, sourceBranch string) (sessionRepo, bool) {
-	var best sessionRepo
+func matchSession(candidates []sessionRepo, sourceBranch string) (best sessionRepo, found bool, ambiguous bool) {
 	bestLen := -1
 	for _, sr := range candidates {
 		if sr.branch == "" {
@@ -806,7 +813,23 @@ func matchSession(candidates []sessionRepo, sourceBranch string) (sessionRepo, b
 			}
 		}
 	}
-	return best, bestLen >= 0
+	if bestLen < 0 {
+		return best, false, false
+	}
+	// Count how many candidates matched at exactly bestLen characters.
+	count := 0
+	for _, sr := range candidates {
+		if sr.branch == "" {
+			continue
+		}
+		for _, prefix := range sessionBranchPrefixes(sr.branch) {
+			if (prefix == sourceBranch || strings.HasPrefix(sourceBranch, prefix+"/")) && len(prefix) == bestLen {
+				count++
+				break
+			}
+		}
+	}
+	return best, true, count > 1
 }
 
 func sessionBranchPrefixes(branch string) []string {
