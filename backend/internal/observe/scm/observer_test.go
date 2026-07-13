@@ -137,6 +137,10 @@ type fakeProvider struct {
 	fetchBatches     [][]ports.SCMPRRef
 	logCalls         int
 	reviewCalls      int
+
+	branchSearchPRs   map[string][]ports.SCMPRObservation
+	branchSearchErr   error
+	branchSearchCalls int
 }
 
 func (p *fakeProvider) SCMCredentialsAvailable(context.Context) (bool, error) {
@@ -177,6 +181,15 @@ func (p *fakeProvider) ListOpenPRsByRepo(_ context.Context, repo ports.SCMRepo) 
 		return nil, p.listErr
 	}
 	return p.openPRs[prKey(repo, 0)], nil
+}
+func (p *fakeProvider) SearchPRsByBranch(_ context.Context, repo ports.SCMRepo, branch string) ([]ports.SCMPRObservation, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.branchSearchCalls++
+	if p.branchSearchErr != nil {
+		return nil, p.branchSearchErr
+	}
+	return p.branchSearchPRs[prKey(repo, 0)+"/"+branch], nil
 }
 func (p *fakeProvider) CommitChecksGuard(_ context.Context, repo ports.SCMRepo, sha, _ string) (ports.SCMGuardResult, error) {
 	return p.checkGuards[commitKey(repo, sha)], nil
@@ -1403,5 +1416,61 @@ func TestDiscoverSubjects_NonGitPathDoesNotBackfill(t *testing.T) {
 	}
 	if got := store.projects["p"].RepoOriginURL; got != "" {
 		t.Fatalf("RepoOriginURL = %q, want empty (no persist on failed backfill)", got)
+	}
+}
+
+// TestBackfillClosedPRs_WritesTerminalBaselineRow verifies that backfillClosedPRs
+// writes a terminal PR row for a session that has no tracked open PR but whose
+// branch maps to a merged PR returned by SearchPRsByBranch, and that the
+// once-per-boot gate prevents a second search call on subsequent polls.
+func TestBackfillClosedPRs_WritesTerminalBaselineRow(t *testing.T) {
+	const sessID = domain.SessionID("p-1")
+	const branch = "feat"
+	mergedPR := ports.SCMPRObservation{
+		URL:          "https://github.com/o/r/pull/99",
+		HTMLURL:      "https://github.com/o/r/pull/99",
+		Number:       99,
+		Merged:       true,
+		SourceBranch: branch,
+		TargetBranch: "main",
+		HeadSHA:      "deadbeef",
+	}
+	store := testStoreWithSession()
+	provider := &fakeProvider{
+		repoGuards: map[string]ports.SCMGuardResult{
+			prKey(testRepo, 0): {ETag: "v1"},
+		},
+		openPRs:      map[string][]ports.SCMPRObservation{},
+		observations: map[string]ports.SCMObservation{},
+		branchSearchPRs: map[string][]ports.SCMPRObservation{
+			prKey(testRepo, 0) + "/" + branch: {mergedPR},
+		},
+	}
+	obs := newTestObserver(store, provider, &fakeLifecycle{}, time.Unix(1, 0).UTC())
+
+	// First Poll: backfill should fire and write the terminal row.
+	if err := obs.Poll(context.Background()); err != nil {
+		t.Fatalf("first Poll: %v", err)
+	}
+	if provider.branchSearchCalls != 1 {
+		t.Fatalf("branchSearchCalls after first poll = %d, want 1", provider.branchSearchCalls)
+	}
+	var found bool
+	for _, w := range store.writes {
+		if w.pr.SessionID == sessID && w.pr.Number == 99 && w.pr.Merged {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected a write with Merged=true and SessionID=%q and Number=99; writes=%v", sessID, store.writes)
+	}
+
+	// Second Poll: the once-per-boot gate must prevent a second search call.
+	if err := obs.Poll(context.Background()); err != nil {
+		t.Fatalf("second Poll: %v", err)
+	}
+	if provider.branchSearchCalls != 1 {
+		t.Fatalf("branchSearchCalls after second poll = %d, want 1 (once-per-boot gate)", provider.branchSearchCalls)
 	}
 }

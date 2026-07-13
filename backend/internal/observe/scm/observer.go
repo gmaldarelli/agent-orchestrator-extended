@@ -41,6 +41,7 @@ type Provider interface {
 	ParseRepository(remote string) (ports.SCMRepo, bool)
 	RepoPRListGuard(ctx context.Context, repo ports.SCMRepo, etag string) (ports.SCMGuardResult, error)
 	ListOpenPRsByRepo(ctx context.Context, repo ports.SCMRepo) ([]ports.SCMPRObservation, error)
+	SearchPRsByBranch(ctx context.Context, repo ports.SCMRepo, headBranch string) ([]ports.SCMPRObservation, error)
 	CommitChecksGuard(ctx context.Context, repo ports.SCMRepo, headSHA, etag string) (ports.SCMGuardResult, error)
 	FetchPullRequests(ctx context.Context, refs []ports.SCMPRRef) ([]ports.SCMObservation, error)
 	FetchFailedCheckLogTail(ctx context.Context, repo ports.SCMRepo, check ports.SCMCheckObservation) (string, error)
@@ -142,12 +143,16 @@ type Observer struct {
 	disabled bool
 	// Cache holds bounded in-memory provider ETags and review poll timestamps.
 	Cache ObserverCache
+	// backfilledSessions is the set of session IDs for which a per-session
+	// branch search has already been attempted in this process lifetime, so
+	// the (potentially expensive) REST call fires at most once per boot.
+	backfilledSessions map[domain.SessionID]bool
 }
 
 // New constructs an Observer with default cadence/cache settings for zero
 // values in cfg.
 func New(provider Provider, store Store, lifecycle Lifecycle, cfg Config) *Observer {
-	o := &Observer{provider: provider, store: store, lifecycle: lifecycle, tick: cfg.Tick, reviewInterval: cfg.ReviewInterval, clock: cfg.Clock, logger: cfg.Logger, Cache: newCache(cfg.CacheMax)}
+	o := &Observer{provider: provider, store: store, lifecycle: lifecycle, tick: cfg.Tick, reviewInterval: cfg.ReviewInterval, clock: cfg.Clock, logger: cfg.Logger, Cache: newCache(cfg.CacheMax), backfilledSessions: map[domain.SessionID]bool{}}
 	if o.tick <= 0 {
 		o.tick = DefaultTickInterval
 	}
@@ -270,6 +275,10 @@ func (o *Observer) Poll(ctx context.Context) error {
 		return err
 	}
 	o.discoverNewPRs(ctx, sessionRepos, subjects, repoGuards, now, markRepoRefreshFailed)
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	o.backfillClosedPRs(ctx, sessionRepos, subjects, now)
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -760,6 +769,89 @@ func (o *Observer) discoverNewPRs(ctx context.Context, sessionRepos []sessionRep
 				known:   known,
 				hasPR:   true,
 			}
+		}
+	}
+}
+
+// backfillClosedPRs performs a targeted per-session branch search for sessions
+// that have no tracked open PR and have not yet been backfilled this boot. For
+// each such session it calls SearchPRsByBranch (state=all) against the session's
+// head repo; if a merged/closed PR is found it is written as a terminal baseline
+// row so the normal persistence/lifecycle pass can fire the completion rule.
+// The search is gated by backfilledSessions so the REST call fires at most once
+// per daemon boot per session.
+func (o *Observer) backfillClosedPRs(ctx context.Context, sessionRepos []sessionRepo, subjects map[string]*subject, now time.Time) {
+	// Index which sessions already have a tracked open PR in subjects.
+	sessionsWithPR := map[domain.SessionID]bool{}
+	for _, s := range subjects {
+		if s.hasPR {
+			sessionsWithPR[s.session.ID] = true
+		}
+	}
+	// Collect per-session the first sessionRepo entry; one search per session suffices
+	// because matchSession/attribution logic uses the same branch-prefix rules.
+	type searchTarget struct {
+		sr     sessionRepo
+		branch string
+	}
+	targets := map[domain.SessionID]searchTarget{}
+	for _, sr := range sessionRepos {
+		id := sr.session.ID
+		if sessionsWithPR[id] || o.backfilledSessions[id] {
+			continue
+		}
+		if _, already := targets[id]; !already {
+			targets[id] = searchTarget{sr: sr, branch: sr.branch}
+		}
+	}
+	for sessID, t := range targets {
+		o.backfilledSessions[sessID] = true
+		pulls, err := o.provider.SearchPRsByBranch(ctx, t.sr.headRepo, t.branch)
+		if err != nil {
+			if !errors.Is(err, ports.ErrSCMNotFound) {
+				o.logger.Error("scm observer: backfill branch search failed", "session", sessID, "branch", t.branch, "err", err)
+			}
+			continue
+		}
+		for _, pr := range pulls {
+			if pr.Number <= 0 || pr.SourceBranch == "" {
+				continue
+			}
+			if !pr.Merged && !pr.Closed {
+				// Open PRs are handled by discoverNewPRs; skip.
+				continue
+			}
+			key := prKey(t.sr.headRepo, pr.Number)
+			if _, ok := subjects[key]; ok {
+				continue
+			}
+			known := domain.PullRequest{
+				URL:          firstNonEmpty(pr.URL, pr.HTMLURL),
+				SessionID:    sessID,
+				Number:       pr.Number,
+				Draft:        pr.Draft,
+				Merged:       pr.Merged,
+				Closed:       pr.Closed,
+				SourceBranch: pr.SourceBranch,
+				TargetBranch: pr.TargetBranch,
+				HeadSHA:      pr.HeadSHA,
+				Provider:     t.sr.headRepo.Provider,
+				Host:         t.sr.headRepo.Host,
+				Repo:         repoFullName(t.sr.headRepo),
+				UpdatedAt:    now,
+			}
+			if err := o.store.WriteSCMObservation(ctx, known, nil, nil, nil, nil, ports.ReviewWritePreserve); err != nil {
+				o.logger.Error("scm observer: persist backfilled closed PR failed", "session", sessID, "pr", known.URL, "err", err)
+				continue
+			}
+			subjects[key] = &subject{
+				session: t.sr.session,
+				repo:    t.sr.headRepo,
+				branch:  t.branch,
+				known:   known,
+				hasPR:   true,
+			}
+			o.logger.Info("scm observer: backfilled closed/merged PR for session", "session", sessID, "pr", known.URL)
 		}
 	}
 }

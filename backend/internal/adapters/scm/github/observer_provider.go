@@ -91,6 +91,37 @@ func (p *Provider) ListOpenPRsByRepo(ctx context.Context, repo ports.SCMRepo) ([
 	}
 }
 
+// SearchPRsByBranch searches for any pull request in repo whose head branch
+// matches headBranch, regardless of state (open, closed, merged). It uses the
+// REST pulls endpoint with state=all so the observer can discover PRs that
+// merged or closed before AO ever saw them as open. Results are bounded by
+// perPage=10 since branch-to-PR cardinality is expected to be very low.
+func (p *Provider) SearchPRsByBranch(ctx context.Context, repo ports.SCMRepo, headBranch string) ([]ports.SCMPRObservation, error) {
+	if strings.TrimSpace(headBranch) == "" {
+		return nil, nil
+	}
+	const perPage = 10
+	q := url.Values{}
+	q.Set("state", "all")
+	q.Set("head", repo.Owner+":"+headBranch)
+	q.Set("sort", "updated")
+	q.Set("direction", "desc")
+	q.Set("per_page", strconv.Itoa(perPage))
+	resp, err := p.client.doREST(ctx, http.MethodGet, repoPath(repo.Owner, repo.Name, "pulls"), q, nil)
+	if err != nil {
+		return nil, err
+	}
+	var pulls []restListPull
+	if err := json.Unmarshal(resp.Body, &pulls); err != nil {
+		return nil, fmt.Errorf("github scm: decode branch PR search: %w", err)
+	}
+	out := make([]ports.SCMPRObservation, 0, len(pulls))
+	for _, pull := range pulls {
+		out = append(out, restListPullToSCM(pull))
+	}
+	return out, nil
+}
+
 // CommitChecksGuard checks GitHub's per-commit check-runs ETag guard.
 func (p *Provider) CommitChecksGuard(ctx context.Context, repo ports.SCMRepo, headSHA, etag string) (ports.SCMGuardResult, error) {
 	if strings.TrimSpace(headSHA) == "" {
