@@ -1,10 +1,12 @@
 package legacyimport
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 
 	yaml "gopkg.in/yaml.v3"
 )
@@ -76,7 +78,67 @@ func loadLegacyConfig(root string) (legacyConfig, error) {
 		// A type mismatch (e.g. a scalar where a mapping is expected) is a
 		// partial decode: keep the decoded fields and continue.
 	}
+
+	// Second-pass: validate per-project keys using KnownFields(true) so
+	// misspelled or misplaced project-level keys are caught. Top-level unknown
+	// keys (notifiers, power, plugins, …) remain intentionally tolerated.
+	if err := validateProjectKeys(data); err != nil {
+		return legacyConfig{}, err
+	}
+
 	return cfg, nil
+}
+
+// validateProjectKeys decodes only the per-project blocks with KnownFields(true)
+// to surface misspelled or unknown project keys. Type errors are tolerated (they
+// are already handled by the first-pass Unmarshal above); only "field not found"
+// errors from KnownFields propagate.
+func validateProjectKeys(data []byte) error {
+	// Extract raw per-project nodes without strict validation at the top level.
+	var raw struct {
+		Projects map[string]yaml.Node `yaml:"projects"`
+	}
+	if err := yaml.Unmarshal(data, &raw); err != nil {
+		return nil // parse failure already handled by caller
+	}
+
+	var errs []string
+	for id, node := range raw.Projects {
+		nodeData, marshalErr := yaml.Marshal(&node)
+		if marshalErr != nil {
+			continue
+		}
+		dec := yaml.NewDecoder(bytes.NewReader(nodeData))
+		dec.KnownFields(true)
+		var pc legacyProjectConfig
+		if decErr := dec.Decode(&pc); decErr != nil {
+			var typeErr *yaml.TypeError
+			if errors.As(decErr, &typeErr) {
+				// Tolerate type mismatches (handled by the first-pass decode).
+				continue
+			}
+			errs = append(errs, fmt.Sprintf("project %q: %v", id, decErr))
+		}
+	}
+	if len(errs) > 0 {
+		return fmt.Errorf("legacy config.yaml: unknown project keys: %w", errors.New(strings.Join(errs, "; ")))
+	}
+	return nil
+}
+
+// ValidateConfigSchema reads root/config.yaml and returns an error if any
+// per-project block contains unknown or misspelled keys. A missing config file
+// is not an error. This is intentionally limited to project blocks — top-level
+// unknown keys (notifiers, power, plugins, …) are tolerated by design.
+func ValidateConfigSchema(root string) error {
+	data, err := os.ReadFile(globalConfigPath(root))
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("read legacy config: %w", err)
+	}
+	return validateProjectKeys(data)
 }
 
 // preferences is the portfolio/preferences.json overlay: only per-project

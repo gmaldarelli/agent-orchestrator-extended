@@ -61,6 +61,10 @@ func buildAgentConfig(src *legacyAgentConfig, notes *[]string, label string) dom
 			*notes = append(*notes, fmt.Sprintf("%s permission %q mapped lossily to %q", label, src.Permissions, mode))
 		}
 	}
+	if err := out.Validate(); err != nil {
+		*notes = append(*notes, fmt.Sprintf("%s: invalid config ignored: %v", label, err))
+		return domain.AgentConfig{}
+	}
 	return out
 }
 

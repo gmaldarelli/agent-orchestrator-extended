@@ -20,6 +20,7 @@ import (
 
 	"github.com/aoagents/agent-orchestrator/backend/internal/adapters/agent/codex"
 	"github.com/aoagents/agent-orchestrator/backend/internal/config"
+	"github.com/aoagents/agent-orchestrator/backend/internal/legacyimport"
 )
 
 type doctorLevel string
@@ -145,6 +146,8 @@ func (c *commandContext) runDoctor(ctx context.Context) []doctorCheck {
 
 	checks = append(checks, checkStore(cfg.DataDir), checkHooksLog(cfg.DataDir, time.Now()))
 
+	checks = append(checks, checkLegacyConfigSchema(legacyimport.DefaultLegacyRootDir()))
+
 	st, err := c.inspectDaemon(ctx)
 	if err != nil {
 		checks = append(checks, doctorCheck{Level: doctorFail, Section: doctorSectionCore, Name: "daemon", Message: err.Error()})
@@ -176,6 +179,20 @@ func (c *commandContext) runDoctor(ctx context.Context) []doctorCheck {
 	}
 	checks = append(checks, c.checkCodexLaunchFlags(ctx), c.checkGitHubToken(ctx))
 	return checks
+}
+
+// checkLegacyConfigSchema validates per-project keys in the legacy config.yaml.
+// Unknown top-level keys (notifiers, power, plugins, …) are tolerated by design;
+// only misspelled or unknown per-project keys are surfaced as a warning.
+func checkLegacyConfigSchema(root string) doctorCheck {
+	const name = "legacy-config-schema"
+	if root == "" {
+		return doctorCheck{Level: doctorPass, Section: doctorSectionCore, Name: name, Message: "legacy root unavailable; skipped"}
+	}
+	if err := legacyimport.ValidateConfigSchema(root); err != nil {
+		return doctorCheck{Level: doctorWarn, Section: doctorSectionCore, Name: name, Message: err.Error()}
+	}
+	return doctorCheck{Level: doctorPass, Section: doctorSectionCore, Name: name, Message: "legacy config.yaml project keys OK"}
 }
 
 // checkStore inspects the SQLite store WITHOUT opening or migrating it. The
