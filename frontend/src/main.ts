@@ -7,6 +7,7 @@ import {
 	Menu,
 	net,
 	nativeImage,
+	Notification as ElectronNotification,
 	protocol,
 	shell,
 	WebContentsView,
@@ -1262,10 +1263,26 @@ ipcMain.handle(
 	"notifications:show",
 	(_event, notification: { id: string; title: string; body?: string; type?: string }) => {
 		if (!notification.id || !mainWindow) return;
-		// Never show OS banners/toasts. Only signal via dock (macOS) and taskbar (Windows/Linux).
+		// Only signal when the window isn't already focused (the user is looking).
 		if (mainWindow.isFocused()) return;
 		const type = notification.type;
 		if (type !== "needs_input" && type !== "ready_to_merge") return;
+
+		// OS toast: a native banner the user can click to jump straight back to the
+		// session. Works hand-in-hand with the dock/taskbar attention signal below.
+		if (notification.title && ElectronNotification.isSupported()) {
+			const toast = new ElectronNotification({ title: notification.title, body: notification.body });
+			toast.on("click", () => {
+				if (!mainWindow) return;
+				if (mainWindow.isMinimized()) mainWindow.restore();
+				mainWindow.show();
+				mainWindow.focus();
+				mainWindow.webContents.send("notifications:click", notification.id);
+			});
+			toast.show();
+		}
+
+		// Dock (macOS) / taskbar (Windows/Linux) attention signal.
 		if (process.platform === "darwin" && app.dock) {
 			app.dock.bounce("informational");
 		} else if (process.platform === "win32" || process.platform === "linux") {
