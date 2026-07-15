@@ -449,9 +449,9 @@ func (e *Engine) stopReviewer(ctx stdctx.Context, review domain.Review, reason s
 			return true, nil
 		}
 		if aliveErr != nil {
-			return false, fmt.Errorf("%s: reviewer cancel failed: %v; reviewer probe failed: %v; reviewer destroy failed: %w", reason, cancelErr, aliveErr, destroyErr)
+			return false, fmt.Errorf("%s: reviewer cancel failed: %w; reviewer probe failed: %w; reviewer destroy failed: %w", reason, cancelErr, aliveErr, destroyErr)
 		}
-		return false, fmt.Errorf("%s: reviewer cancel failed: %v; reviewer destroy failed: %w", reason, cancelErr, destroyErr)
+		return false, fmt.Errorf("%s: reviewer cancel failed: %w; reviewer destroy failed: %w", reason, cancelErr, destroyErr)
 	}
 	return true, nil
 }
