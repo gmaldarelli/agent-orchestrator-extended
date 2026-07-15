@@ -764,7 +764,8 @@ func TestSpawnOrchestratorNoCleanReturnsExistingWhenActiveExists(t *testing.T) {
 func TestSpawnOrchestratorNoCleanSpawnsWhenNoneExists(t *testing.T) {
 	st := newFakeStore()
 	st.projects["mer"] = domain.ProjectRecord{ID: "mer"}
-	// No active orchestrator present.
+	// An active worker must not block orchestrator creation.
+	st.sessions["mer-worker"] = domain.SessionRecord{ID: "mer-worker", ProjectID: "mer", Kind: domain.KindWorker}
 
 	fc := &fakeCommander{}
 	svc := &Service{manager: fc, store: st}
@@ -775,6 +776,9 @@ func TestSpawnOrchestratorNoCleanSpawnsWhenNoneExists(t *testing.T) {
 	}
 	if !fc.spawned {
 		t.Fatal("manager.Spawn must be called when no active orchestrator exists")
+	}
+	if fc.spawnedCfg.Kind != domain.KindOrchestrator {
+		t.Fatalf("spawn kind = %q, want orchestrator", fc.spawnedCfg.Kind)
 	}
 	if len(fc.killed) != 0 {
 		t.Fatalf("no kills expected with clean=false, got %v", fc.killed)

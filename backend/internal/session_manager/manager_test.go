@@ -628,7 +628,7 @@ func TestSpawn_ResolvesProjectConfig(t *testing.T) {
 	}
 }
 
-func TestSpawn_RejectsMissingRoleHarness(t *testing.T) {
+func TestSpawn_RejectsMissingWorkerHarnessAndDefaultsOrchestrator(t *testing.T) {
 	st := newFakeStore()
 	st.projects["mer"] = domain.ProjectRecord{ID: "mer"}
 	m := New(Deps{
@@ -643,8 +643,11 @@ func TestSpawn_RejectsMissingRoleHarness(t *testing.T) {
 	if len(st.sessions) != 0 {
 		t.Fatalf("missing worker harness must not create a session row, got %d", len(st.sessions))
 	}
-	if _, err := m.Spawn(ctx, ports.SpawnConfig{ProjectID: "mer", Kind: domain.KindOrchestrator}); !errors.Is(err, ErrMissingHarness) {
-		t.Fatalf("orchestrator err = %v, want ErrMissingHarness", err)
+	if _, err := m.Spawn(ctx, ports.SpawnConfig{ProjectID: "mer", Kind: domain.KindOrchestrator}); err != nil {
+		t.Fatalf("orchestrator spawn with default harness: %v", err)
+	}
+	if got := st.sessions["mer-1"].Harness; got != domain.HarnessClaudeCode {
+		t.Fatalf("orchestrator harness = %q, want %q", got, domain.HarnessClaudeCode)
 	}
 }
 

@@ -117,6 +117,9 @@ func TestEffectiveHarnessAndAgentConfig(t *testing.T) {
 	if h := effectiveHarness("", domain.KindOrchestrator, cfg); h != domain.HarnessClaudeCode {
 		t.Fatalf("orchestrator harness = %q, want claude-code", h)
 	}
+	if h := effectiveHarness("", domain.KindOrchestrator, domain.ProjectConfig{}); h != domain.HarnessClaudeCode {
+		t.Fatalf("unconfigured orchestrator harness = %q, want claude-code", h)
+	}
 
 	// Role override merges over the base agent config (set fields win; unset keep base).
 	got := effectiveAgentConfig(domain.KindWorker, cfg)

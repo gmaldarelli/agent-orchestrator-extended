@@ -467,14 +467,19 @@ func (m *Manager) destroySpawnWorkspace(ctx context.Context, ws ports.WorkspaceI
 }
 
 // effectiveHarness resolves the harness for a spawn: an explicit harness wins;
-// otherwise the project's role override for the session kind applies. Empty is
-// invalid for new worker/orchestrator launches and is rejected by Spawn.
+// otherwise the project's role override for the session kind applies. New
+// orchestrators fall back to Claude Code so ensure-on-load can start a
+// coordinator for projects that only configured a worker agent. Empty is still
+// invalid for workers and is rejected by Spawn.
 func effectiveHarness(explicit domain.AgentHarness, kind domain.SessionKind, cfg domain.ProjectConfig) domain.AgentHarness {
 	if explicit != "" {
 		return explicit
 	}
 	if role := roleOverride(kind, cfg).Harness; role != "" {
 		return role
+	}
+	if kind == domain.KindOrchestrator {
+		return domain.HarnessClaudeCode
 	}
 	return ""
 }

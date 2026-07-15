@@ -30,8 +30,9 @@ const (
 	// the process exits even if connections are still draining.
 	DefaultShutdownTimeout = 10 * time.Second
 	// DefaultAgent is the compatibility value used when AO_AGENT is unset. The
-	// daemon validates it at startup, but worker/orchestrator spawns resolve from
-	// explicit requests or project role config instead of falling back to it.
+	// daemon validates it at startup; worker spawns still resolve from explicit
+	// requests or project role config, while orchestrator spawns use this built-in
+	// default as their final fallback.
 	DefaultAgent = "claude-code"
 	// DefaultTelemetryPostHogHost is the default PostHog ingestion host when
 	// remote telemetry is enabled and AO_TELEMETRY_POSTHOG_HOST is unset.

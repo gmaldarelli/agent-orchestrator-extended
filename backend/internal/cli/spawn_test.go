@@ -195,8 +195,8 @@ func TestSpawnResolvesProjectFromEnvAndDefaultAgent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("spawn failed: %v stderr=%s", err, errOut)
 	}
-	if !strings.Contains(out, "spawned session demo-11") {
-		t.Fatalf("output missing spawn: %s", out)
+	if out != "spawned session demo-11 (idle)\n" {
+		t.Fatalf("output = %q, want only spawned-session line", out)
 	}
 	if req.ProjectID != "demo" || req.Harness != "codex" || req.DisplayName != "Fix failing tests in" {
 		t.Fatalf("spawn request = %#v", req)

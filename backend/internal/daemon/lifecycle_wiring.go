@@ -226,8 +226,8 @@ func (a agentRegistry) Agent(harness domain.AgentHarness) (ports.Agent, bool) {
 // buildAgentResolver constructs the per-session agent resolver the Session
 // Manager consumes (sessionmanager.Deps.Agents): a registry of the shipped
 // adapters. It still validates AO_AGENT at startup for compatibility with the
-// config surface, but worker/orchestrator spawns must provide a resolved
-// harness before calling Agent.
+// config surface, but worker spawns must provide a resolved harness before
+// calling Agent. Orchestrator spawns fall back to the built-in default harness.
 func buildAgentResolver(defaultAgent string, log *slog.Logger) (ports.AgentResolver, error) {
 	if defaultAgent == "" {
 		defaultAgent = config.DefaultAgent
