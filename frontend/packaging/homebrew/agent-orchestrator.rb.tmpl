@@ -19,7 +19,7 @@ cask "agent-orchestrator" do
   # The app self-updates via electron-updater from GitHub Releases, so Homebrew
   # only installs the initial version and must not fight the in-app updater.
   auto_updates true
-  depends_on macos: ">= :big_sur"
+  depends_on macos: :big_sur
 
   app "Agent Orchestrator.app"
 
