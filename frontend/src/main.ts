@@ -1258,8 +1258,8 @@ ipcMain.handle("updates:check", async () => {
 ipcMain.handle("updates:download", async () => {
 	await downloadUpdateNow();
 });
-ipcMain.handle("updates:install", () => {
-	quitAndInstallUpdate();
+ipcMain.handle("updates:install", async () => {
+	await quitAndInstallUpdate();
 });
 
 ipcMain.handle("notifications:show", (_event, notification: { id: string; title: string; body?: string }) => {

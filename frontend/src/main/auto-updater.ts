@@ -3,14 +3,18 @@ import { app, BrowserWindow, dialog } from "electron";
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
+import semver from "semver";
 import {
 	readUpdateSettings,
 	writeUpdateSettings,
 	UPDATE_SETTINGS_FILE_NAME,
 	type UpdateChannel,
+	type UpdateSettings,
 	type UpdateStatus,
 } from "./update-settings";
 import { evaluateEscalation } from "./escalation-evaluator";
+
+export const AUTO_UPDATE_CHECK_INTERVAL_MS = 2 * 60 * 60 * 1000;
 
 // configureFeed sets the update channel on electron-updater. The repo/owner
 // are loaded automatically from app-update.yml (written by forge.config.ts's
@@ -36,8 +40,11 @@ let eventsWired = false;
 let stagedVersion: string | undefined;
 let stagedAtMs: number | undefined;
 let stagedEscalated = false;
+let supersedingVersion: string | undefined;
 let escalationTimer: ReturnType<typeof setInterval> | undefined;
 let escalationStateDir: string | undefined;
+let autoUpdateTimer: ReturnType<typeof setInterval> | undefined;
+let autoUpdateCheckInFlight: Promise<boolean> | undefined;
 
 // broadcast pushes the latest update status to every renderer window so the
 // Global Settings Updates section can reflect check/download progress live.
@@ -101,6 +108,19 @@ async function fetchNightlyImportant(owner: string, repo: string, version: strin
 // state, so transient check states can restore the row without recomputing.
 function stagedDownloadedStatus(): UpdateStatus {
 	return { state: "downloaded", version: stagedVersion, stagedAt: stagedAtMs, escalated: stagedEscalated };
+}
+
+function isNewerVersion(candidate: string | undefined, current: string | undefined): boolean {
+	if (!candidate || !current) return false;
+	try {
+		return semver.gt(candidate, current);
+	} catch {
+		return false;
+	}
+}
+
+function stagedUpdateIsSuperseded(): boolean {
+	return stagedAtMs !== undefined && isNewerVersion(supersedingVersion, stagedVersion);
 }
 
 // runEscalationCheck re-reads settings and feeds, then rebroadcasts the
@@ -171,6 +191,12 @@ function wireUpdaterEvents(): void {
 			broadcast(stagedDownloadedStatus());
 			return;
 		}
+		if (stagedAtMs !== undefined && isNewerVersion(info?.version, stagedVersion)) {
+			supersedingVersion = info?.version;
+			// Do not let app quit install the older cached build after we know a
+			// newer one exists. update-downloaded re-enables this for the latest.
+			autoUpdater.autoInstallOnAppQuit = false;
+		}
 		broadcast({ state: "available", version: info?.version });
 	});
 	autoUpdater.on("update-not-available", () => {
@@ -186,6 +212,8 @@ function wireUpdaterEvents(): void {
 		stagedVersion = info?.version;
 		stagedAtMs = Date.now();
 		stagedEscalated = false;
+		supersedingVersion = undefined;
+		autoUpdater.autoInstallOnAppQuit = true;
 		broadcast(stagedDownloadedStatus());
 		// Evaluate now (nightly can escalate immediately), then every 30 minutes
 		// while the update sits uninstalled. unref so the timer never holds the
@@ -205,24 +233,60 @@ export function getUpdateStatus(): UpdateStatus {
 	return lastStatus;
 }
 
-// startAutoUpdates configures electron-updater from the user's ~/.ao settings.
-// It is a thin shell: all policy (channel, opt-in) comes from update-settings.
-// Caller guards on app.isPackaged.
-export async function startAutoUpdates(stateDir: string): Promise<void> {
-	const settings = await readUpdateSettings(stateDir);
-	if (!settings.enabled) return;
-
+async function runAutomaticUpdateCheck(stateDir: string, settings?: UpdateSettings): Promise<boolean> {
+	const resolvedSettings = settings ?? (await readUpdateSettings(stateDir));
+	if (!resolvedSettings.enabled) {
+		stopAutoUpdateTimer();
+		return false;
+	}
 	escalationStateDir = stateDir;
 	wireUpdaterEvents();
-	configureFeed(settings.channel);
+	configureFeed(resolvedSettings.channel);
 	autoUpdater.autoDownload = true;
-	autoUpdater.autoInstallOnAppQuit = true;
+	if (!stagedUpdateIsSuperseded()) {
+		autoUpdater.autoInstallOnAppQuit = true;
+	}
 
 	try {
 		await autoUpdater.checkForUpdates();
 	} catch (err) {
 		console.error("auto-update check failed:", err);
 	}
+	return true;
+}
+
+function stopAutoUpdateTimer(): void {
+	if (autoUpdateTimer !== undefined) {
+		clearInterval(autoUpdateTimer);
+		autoUpdateTimer = undefined;
+	}
+}
+
+function startAutoUpdateTimer(stateDir: string): void {
+	if (autoUpdateTimer !== undefined) return;
+	autoUpdateTimer = setInterval(() => {
+		if (autoUpdateCheckInFlight !== undefined) return;
+		autoUpdateCheckInFlight = runAutomaticUpdateCheck(stateDir).finally(() => {
+			autoUpdateCheckInFlight = undefined;
+		});
+	}, AUTO_UPDATE_CHECK_INTERVAL_MS);
+	autoUpdateTimer.unref?.();
+}
+
+// startAutoUpdates configures electron-updater from the user's ~/.ao settings.
+// It is a thin shell: all policy (channel, opt-in) comes from update-settings.
+// Caller guards on app.isPackaged.
+export async function startAutoUpdates(stateDir: string): Promise<void> {
+	const settings = await readUpdateSettings(stateDir);
+	if (!settings.enabled) {
+		stopAutoUpdateTimer();
+		return;
+	}
+
+	autoUpdateCheckInFlight = runAutomaticUpdateCheck(stateDir, settings);
+	const enabled = await autoUpdateCheckInFlight;
+	autoUpdateCheckInFlight = undefined;
+	if (enabled) startAutoUpdateTimer(stateDir);
 }
 
 // checkForUpdatesNow runs a manual update check regardless of the auto-update
@@ -263,10 +327,20 @@ export async function downloadUpdateNow(): Promise<void> {
 	}
 }
 
-// quitAndInstallUpdate installs a downloaded update and relaunches. isSilent
-// false keeps the installer UI on Windows; isForceRunAfter relaunches the app.
-export function quitAndInstallUpdate(): void {
+// quitAndInstallUpdate installs a downloaded update and relaunches. If a newer
+// update has superseded the staged build, download it first so restart applies
+// the newest available version. isSilent false keeps the installer UI on
+// Windows; isForceRunAfter relaunches the app.
+export async function quitAndInstallUpdate(): Promise<void> {
 	if (!app.isPackaged) return;
+	if (stagedUpdateIsSuperseded()) {
+		try {
+			await autoUpdater.downloadUpdate();
+		} catch (err) {
+			broadcast({ state: "error", message: (err as Error)?.message ?? "Download failed" });
+			return;
+		}
+	}
 	autoUpdater.quitAndInstall(false, true);
 }
 
