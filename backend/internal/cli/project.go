@@ -93,6 +93,11 @@ type trackerIntakeConfig struct {
 	Assignee string `json:"assignee,omitempty"`
 }
 
+// reviewerConfig mirrors domain.ReviewerConfig.
+type reviewerConfig struct {
+	Harness string `json:"harness"`
+}
+
 // projectConfig mirrors the daemon's typed domain.ProjectConfig for the CLI
 // client. The CLI sets common fields via flags and the whole object via
 // --config-json.
@@ -108,6 +113,7 @@ type projectConfig struct {
 	AgentConfig       agentConfig         `json:"agentConfig,omitempty"`
 	Worker            roleOverride        `json:"worker,omitempty"`
 	Orchestrator      roleOverride        `json:"orchestrator,omitempty"`
+	Reviewers         []reviewerConfig    `json:"reviewers,omitempty"`
 	TrackerIntake     trackerIntakeConfig `json:"trackerIntake,omitempty"`
 }
 
@@ -340,6 +346,9 @@ func buildProjectConfig(opts projectSetConfigOptions) (projectConfig, error) {
 	}
 	if opts.configJSON != "" {
 		var cfg projectConfig
+		if err := validateJSONKeys([]byte(opts.configJSON), reflect.TypeOf(cfg), "config"); err != nil {
+			return projectConfig{}, usageError{fmt.Errorf("--config-json does not match project config schema: %w", err)}
+		}
 		if err := json.Unmarshal([]byte(opts.configJSON), &cfg); err != nil {
 			return projectConfig{}, usageError{fmt.Errorf("--config-json is not a valid JSON object: %w", err)}
 		}
@@ -380,6 +389,103 @@ func trackerProviderForFlags(opts projectSetConfigOptions) string {
 		return "github"
 	}
 	return ""
+}
+
+func validateJSONKeys(data []byte, typ reflect.Type, path string) error {
+	return validateJSONValue(json.RawMessage(data), typ, path)
+}
+
+func validateJSONValue(raw json.RawMessage, typ reflect.Type, path string) error {
+	for typ.Kind() == reflect.Pointer {
+		typ = typ.Elem()
+	}
+	switch typ.Kind() {
+	case reflect.Struct:
+		var obj map[string]json.RawMessage
+		if err := json.Unmarshal(raw, &obj); err != nil {
+			return fmt.Errorf("%s must be an object: %w", path, err)
+		}
+		fields := jsonFieldTypes(typ)
+		for key, value := range obj {
+			fieldType, ok := fields[key]
+			if !ok {
+				return fmt.Errorf("unknown config key %q at %s (valid keys: %s)", key, path, strings.Join(sortedJSONKeys(fields), ", "))
+			}
+			if err := validateJSONValue(value, fieldType, path+"."+key); err != nil {
+				return err
+			}
+		}
+	case reflect.Slice, reflect.Array:
+		elem := typ.Elem()
+		if !needsKeyValidation(elem) {
+			return nil
+		}
+		var items []json.RawMessage
+		if err := json.Unmarshal(raw, &items); err != nil {
+			return fmt.Errorf("%s must be an array: %w", path, err)
+		}
+		for i, item := range items {
+			if err := validateJSONValue(item, elem, fmt.Sprintf("%s[%d]", path, i)); err != nil {
+				return err
+			}
+		}
+	case reflect.Map:
+		elem := typ.Elem()
+		if !needsKeyValidation(elem) {
+			return nil
+		}
+		var obj map[string]json.RawMessage
+		if err := json.Unmarshal(raw, &obj); err != nil {
+			return fmt.Errorf("%s must be an object: %w", path, err)
+		}
+		for key, value := range obj {
+			if err := validateJSONValue(value, elem, path+"."+key); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func needsKeyValidation(typ reflect.Type) bool {
+	for typ.Kind() == reflect.Pointer {
+		typ = typ.Elem()
+	}
+	switch typ.Kind() {
+	case reflect.Struct, reflect.Slice, reflect.Array, reflect.Map:
+		return true
+	default:
+		return false
+	}
+}
+
+func jsonFieldTypes(typ reflect.Type) map[string]reflect.Type {
+	fields := make(map[string]reflect.Type)
+	for i := 0; i < typ.NumField(); i++ {
+		field := typ.Field(i)
+		if field.PkgPath != "" {
+			continue
+		}
+		tag := field.Tag.Get("json")
+		name, _, _ := strings.Cut(tag, ",")
+		if name == "-" {
+			continue
+		}
+		if name == "" {
+			name = field.Name
+		}
+		fields[name] = field.Type
+	}
+	return fields
+}
+
+func sortedJSONKeys(fields map[string]reflect.Type) []string {
+	keys := make([]string, 0, len(fields))
+	for key := range fields {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
 }
 
 // parseEnvPairs turns repeated KEY=VALUE flags into a map.

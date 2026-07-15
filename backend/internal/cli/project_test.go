@@ -81,6 +81,70 @@ func TestProjectSetConfig_TrackerIntakeJSON(t *testing.T) {
 	}
 }
 
+func TestProjectSetConfig_ConfigJSONRejectsUnknownTopLevelKey(t *testing.T) {
+	cfg := setConfigEnv(t)
+	srv, _ := projectServer(t, http.StatusOK, `{"project":{"id":"demo","path":"/repo/demo"}}`)
+	writeRunFileFor(t, cfg, srv)
+
+	_, errOut, err := executeCLI(t, Deps{
+		ProcessAlive: func(int) bool { return true },
+	}, "project", "set-config", "demo", "--config-json", `{"defaultBranch":"main","defaults":{"agentConfig":{"permissions":"auto"}}}`)
+	if err == nil {
+		t.Fatal("expected unknown top-level key error")
+	}
+	if got := ExitCode(err); got != 2 {
+		t.Fatalf("exit code = %d, want 2; stderr=%s", got, errOut)
+	}
+	if !strings.Contains(err.Error(), `unknown config key "defaults" at config`) {
+		t.Fatalf("error did not name offending top-level key and location: %v\nstderr=%s", err, errOut)
+	}
+}
+
+func TestProjectSetConfig_ConfigJSONRejectsMisplacedNestedKey(t *testing.T) {
+	cfg := setConfigEnv(t)
+	srv, _ := projectServer(t, http.StatusOK, `{"project":{"id":"demo","path":"/repo/demo"}}`)
+	writeRunFileFor(t, cfg, srv)
+
+	_, errOut, err := executeCLI(t, Deps{
+		ProcessAlive: func(int) bool { return true },
+	}, "project", "set-config", "demo", "--config-json", `{"worker":{"permissions":"auto"}}`)
+	if err == nil {
+		t.Fatal("expected misplaced nested key error")
+	}
+	if got := ExitCode(err); got != 2 {
+		t.Fatalf("exit code = %d, want 2; stderr=%s", got, errOut)
+	}
+	if !strings.Contains(err.Error(), `unknown config key "permissions" at config.worker`) {
+		t.Fatalf("error did not name offending nested key and location: %v\nstderr=%s", err, errOut)
+	}
+}
+
+func TestProjectSetConfig_ConfigJSONAcceptsValidConfig(t *testing.T) {
+	cfg := setConfigEnv(t)
+	srv, capture := projectServer(t, http.StatusOK, `{"project":{"id":"demo","path":"/repo/demo"}}`)
+	writeRunFileFor(t, cfg, srv)
+
+	_, errOut, err := executeCLI(t, Deps{
+		ProcessAlive: func(int) bool { return true },
+	}, "project", "set-config", "demo", "--config-json", `{"worker":{"agent":"codex","agentConfig":{"permissions":"auto"}},"env":{"FOO":"bar"},"reviewers":[{"harness":"codex"}]}`)
+	if err != nil {
+		t.Fatalf("unexpected error: %v\nstderr=%s", err, errOut)
+	}
+	if capture.method != http.MethodPut || capture.path != "/api/v1/projects/demo/config" {
+		t.Fatalf("request = %s %s, want PUT /api/v1/projects/demo/config", capture.method, capture.path)
+	}
+	var got setConfigRequest
+	if err := json.Unmarshal(capture.body, &got); err != nil {
+		t.Fatalf("decode request: %v\nbody=%s", err, capture.body)
+	}
+	if got.Config.Worker.Agent != "codex" || got.Config.Worker.AgentConfig.Permissions != "auto" || got.Config.Env["FOO"] != "bar" {
+		t.Fatalf("valid config not preserved: %#v", got.Config)
+	}
+	if len(got.Config.Reviewers) != 1 || got.Config.Reviewers[0].Harness != "codex" {
+		t.Fatalf("reviewers config = %#v", got.Config.Reviewers)
+	}
+}
+
 func TestBuildProjectConfigTrackerIntakeFlags(t *testing.T) {
 	got, err := buildProjectConfig(projectSetConfigOptions{
 		trackerIntake:   true,
