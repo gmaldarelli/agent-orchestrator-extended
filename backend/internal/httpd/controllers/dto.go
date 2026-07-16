@@ -156,6 +156,7 @@ type SpawnSessionRequest struct {
 	// `ao spawn --name` always sets it; other clients (e.g. the desktop new-task
 	// dialog) may omit it and fall back to the session id in the read model.
 	DisplayName string `json:"displayName,omitempty" maxLength:"20"`
+	Model       string `json:"model,omitempty"`
 }
 
 // SessionResponse is the { session } body shared by session create/get.

@@ -1089,6 +1089,7 @@ export interface components {
             issueId?: string;
             /** @enum {string} */
             kind?: "worker" | "orchestrator";
+            model?: string;
             projectId: string;
             prompt?: string;
         };
