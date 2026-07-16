@@ -1620,6 +1620,34 @@ func TestRestore_PrefersPersistedSessionModel(t *testing.T) {
 	}
 }
 
+func TestRestore_PrefersPersistedSessionModelEffort(t *testing.T) {
+	st := newFakeStore()
+	st.projects["mer"] = domain.ProjectRecord{ID: "mer", Config: domain.ProjectConfig{AgentConfig: domain.AgentConfig{ModelEffort: domain.ModelEffortLow}}}
+	seedTerminal(st, "mer-1", domain.SessionMetadata{
+		WorkspacePath:  "/ws/mer-1",
+		Branch:         "b",
+		AgentSessionID: "agent-x",
+		ModelEffort:    domain.ModelEffortMax,
+	})
+	rec := st.sessions["mer-1"]
+	rec.Harness = domain.HarnessCodex
+	st.sessions["mer-1"] = rec
+	agent := &recordingAgent{}
+	lookPath := func(string) (string, error) { return "/bin/true", nil }
+	m := New(Deps{Runtime: &fakeRuntime{}, Agents: singleAgent{agent: agent}, Workspace: &fakeWorkspace{}, Store: st, Messenger: &fakeMessenger{}, Lifecycle: &fakeLCM{store: st}, LookPath: lookPath})
+
+	rec, err := m.Restore(ctx, "mer-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if agent.lastConfig.ModelEffort != domain.ModelEffortMax {
+		t.Fatalf("restore config model effort = %q, want max", agent.lastConfig.ModelEffort)
+	}
+	if rec.Metadata.ModelEffort != domain.ModelEffortMax {
+		t.Fatalf("restored model effort = %q, want max", rec.Metadata.ModelEffort)
+	}
+}
+
 func TestRestore_RefusesLiveSession(t *testing.T) {
 	m, st, _, _ := newManager()
 	st.sessions["mer-1"] = mkLive("mer-1")
@@ -4572,6 +4600,58 @@ func TestSpawn_PerSpawnModelOverridesConfig(t *testing.T) {
 	// And it is persisted on the record so a restart restores the same model.
 	if rec.Metadata.Model != "spawn-model" {
 		t.Fatalf("persisted model = %q, want spawn-model", rec.Metadata.Model)
+	}
+}
+
+func TestSpawn_PerSpawnModelEffortOverridesConfig(t *testing.T) {
+	st := newFakeStore()
+	st.projects["mer"] = domain.ProjectRecord{ID: "mer", Config: domain.ProjectConfig{
+		AgentConfig: domain.AgentConfig{ModelEffort: domain.ModelEffortHigh},
+		Worker:      domain.RoleOverride{Harness: domain.HarnessCodex, AgentConfig: domain.AgentConfig{ModelEffort: domain.ModelEffortMedium}},
+	}}
+	agent := &recordingAgent{}
+	lookPath := func(string) (string, error) { return "/bin/true", nil }
+	m := New(Deps{Runtime: &fakeRuntime{}, Agents: singleAgent{agent: agent}, Workspace: &fakeWorkspace{}, Store: st, Messenger: &fakeMessenger{}, Lifecycle: &fakeLCM{store: st}, LookPath: lookPath})
+
+	rec, err := m.Spawn(ctx, ports.SpawnConfig{ProjectID: "mer", Kind: domain.KindWorker, ModelEffort: domain.ModelEffortMax})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if agent.lastConfig.ModelEffort != domain.ModelEffortMax {
+		t.Fatalf("launch model effort = %q, want max", agent.lastConfig.ModelEffort)
+	}
+	if rec.Metadata.ModelEffort != domain.ModelEffortMax {
+		t.Fatalf("persisted model effort = %q, want max", rec.Metadata.ModelEffort)
+	}
+}
+
+func TestSpawn_ModelEffortRequiresSupportedHarness(t *testing.T) {
+	st := newFakeStore()
+	st.projects["mer"] = domain.ProjectRecord{ID: "mer", Config: domain.ProjectConfig{
+		Worker: domain.RoleOverride{Harness: domain.HarnessClaudeCode, AgentConfig: domain.AgentConfig{ModelEffort: domain.ModelEffortMax}},
+	}}
+	agent := &recordingAgent{}
+	lookPath := func(string) (string, error) { return "/bin/true", nil }
+	m := New(Deps{Runtime: &fakeRuntime{}, Agents: singleAgent{agent: agent}, Workspace: &fakeWorkspace{}, Store: st, Messenger: &fakeMessenger{}, Lifecycle: &fakeLCM{store: st}, LookPath: lookPath})
+
+	_, err := m.Spawn(ctx, ports.SpawnConfig{ProjectID: "mer", Kind: domain.KindWorker})
+	if err == nil || !strings.Contains(err.Error(), `modelEffort "max" is not supported for harness "claude-code"`) {
+		t.Fatalf("spawn err = %v, want unsupported modelEffort", err)
+	}
+}
+
+func TestSpawn_RejectsUnknownModelEffort(t *testing.T) {
+	st := newFakeStore()
+	st.projects["mer"] = domain.ProjectRecord{ID: "mer", Config: domain.ProjectConfig{
+		Worker: domain.RoleOverride{Harness: domain.HarnessCodex},
+	}}
+	agent := &recordingAgent{}
+	lookPath := func(string) (string, error) { return "/bin/true", nil }
+	m := New(Deps{Runtime: &fakeRuntime{}, Agents: singleAgent{agent: agent}, Workspace: &fakeWorkspace{}, Store: st, Messenger: &fakeMessenger{}, Lifecycle: &fakeLCM{store: st}, LookPath: lookPath})
+
+	_, err := m.Spawn(ctx, ports.SpawnConfig{ProjectID: "mer", Kind: domain.KindWorker, ModelEffort: "extreme"})
+	if err == nil || !strings.Contains(err.Error(), `invalid modelEffort "extreme"`) {
+		t.Fatalf("spawn err = %v, want invalid modelEffort", err)
 	}
 }
 

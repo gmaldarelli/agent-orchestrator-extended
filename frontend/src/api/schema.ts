@@ -663,6 +663,8 @@ export interface components {
         };
         AgentConfig: {
             model?: string;
+            /** @enum {string} */
+            modelEffort?: "minimal" | "low" | "medium" | "high" | "extra-high" | "max";
             permissions?: string;
         };
         AgentInfo: {
@@ -1090,6 +1092,8 @@ export interface components {
             /** @enum {string} */
             kind?: "worker" | "orchestrator";
             model?: string;
+            /** @enum {string} */
+            modelEffort?: "minimal" | "low" | "medium" | "high" | "extra-high" | "max";
             projectId: string;
             prompt?: string;
         };

@@ -151,6 +151,20 @@ const (
 // share one definition without a translation layer.
 type AgentConfig = domain.AgentConfig
 
+// ModelEffort is the typed provider-neutral reasoning/effort tier carried in
+// AgentConfig.
+type ModelEffort = domain.ModelEffort
+
+// Model effort tiers re-export the domain vocabulary for adapter packages.
+const (
+	ModelEffortMinimal   = domain.ModelEffortMinimal
+	ModelEffortLow       = domain.ModelEffortLow
+	ModelEffortMedium    = domain.ModelEffortMedium
+	ModelEffortHigh      = domain.ModelEffortHigh
+	ModelEffortExtraHigh = domain.ModelEffortExtraHigh
+	ModelEffortMax       = domain.ModelEffortMax
+)
+
 // ConfigSpec describes the agent-specific config keys AO can expose to users.
 type ConfigSpec struct {
 	Fields []ConfigField

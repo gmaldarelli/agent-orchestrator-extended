@@ -9,8 +9,9 @@ func TestProjectConfigValidate(t *testing.T) {
 		wantErr bool
 	}{
 		{"empty ok", ProjectConfig{}, false},
-		{"good agent config", ProjectConfig{AgentConfig: AgentConfig{Model: "m", Permissions: PermissionModeAuto}}, false},
+		{"good agent config", ProjectConfig{AgentConfig: AgentConfig{Model: "m", ModelEffort: ModelEffortMax, Permissions: PermissionModeAuto}}, false},
 		{"bad permission", ProjectConfig{AgentConfig: AgentConfig{Permissions: "yolo"}}, true},
+		{"bad model effort", ProjectConfig{AgentConfig: AgentConfig{ModelEffort: "extreme"}}, true},
 		{"good session prefix", ProjectConfig{SessionPrefix: "ao"}, false},
 		{"session prefix with slash", ProjectConfig{SessionPrefix: "ao/project"}, true},
 		{"session prefix with backslash", ProjectConfig{SessionPrefix: `ao\project`}, true},
@@ -18,6 +19,7 @@ func TestProjectConfigValidate(t *testing.T) {
 		{"good role override", ProjectConfig{Worker: RoleOverride{Harness: HarnessCodex}}, false},
 		{"unknown role harness", ProjectConfig{Orchestrator: RoleOverride{Harness: "nope"}}, true},
 		{"bad role agent config", ProjectConfig{Worker: RoleOverride{AgentConfig: AgentConfig{Permissions: "nope"}}}, true},
+		{"bad role model effort", ProjectConfig{Worker: RoleOverride{AgentConfig: AgentConfig{ModelEffort: "extreme"}}}, true},
 		{"good symlinks", ProjectConfig{Symlinks: []string{".env", "configs/dev.toml"}}, false},
 		{"symlink absolute path", ProjectConfig{Symlinks: []string{"/etc/passwd"}}, true},
 		{"symlink parent escape", ProjectConfig{Symlinks: []string{"../escape"}}, true},

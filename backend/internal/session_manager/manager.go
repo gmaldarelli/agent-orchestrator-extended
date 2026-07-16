@@ -261,6 +261,20 @@ func (m *Manager) Spawn(ctx context.Context, cfg ports.SpawnConfig) (domain.Sess
 	if _, ok := m.agents.Agent(cfg.Harness); !ok {
 		return domain.SessionRecord{}, fmt.Errorf("spawn: %w: %q", ErrUnknownHarness, cfg.Harness)
 	}
+	agentConfig := effectiveAgentConfig(cfg.Kind, project.Config)
+	// Per-spawn overrides win over both the project default and role config.
+	if cfg.Model != "" {
+		agentConfig.Model = cfg.Model
+	}
+	if cfg.ModelEffort != "" {
+		agentConfig.ModelEffort = cfg.ModelEffort
+	}
+	if err := agentConfig.Validate(); err != nil {
+		return domain.SessionRecord{}, fmt.Errorf("spawn: %w", err)
+	}
+	if err := validateModelEffortForHarness(cfg.Harness, agentConfig.ModelEffort); err != nil {
+		return domain.SessionRecord{}, fmt.Errorf("spawn: %w", err)
+	}
 
 	if err := m.validateRuntimePrerequisites(); err != nil {
 		return domain.SessionRecord{}, fmt.Errorf("spawn: %w", err)
@@ -308,11 +322,6 @@ func (m *Manager) Spawn(ctx context.Context, cfg ports.SpawnConfig) (domain.Sess
 		m.destroySpawnWorkspace(ctx, ws, workspaceProject)
 		m.rollbackSpawnSeedRow(ctx, id)
 		return domain.SessionRecord{}, fmt.Errorf("spawn %s: no agent adapter for harness %q", id, cfg.Harness)
-	}
-	agentConfig := effectiveAgentConfig(cfg.Kind, project.Config)
-	// Per-spawn --model overrides both the project default and role config.
-	if cfg.Model != "" {
-		agentConfig.Model = cfg.Model
 	}
 	env := m.runtimeEnv(id, cfg.ProjectID, cfg.IssueID, project.Config.Env)
 	m.augmentAgentRuntimeEnv(agent, env)
@@ -369,7 +378,7 @@ func (m *Manager) Spawn(ctx context.Context, cfg ports.SpawnConfig) (domain.Sess
 		return domain.SessionRecord{}, fmt.Errorf("spawn %s: runtime: %w", id, err)
 	}
 
-	metadata := domain.SessionMetadata{Branch: ws.Branch, WorkspacePath: ws.Path, RuntimeHandleID: handle.ID, Prompt: prompt, Model: agentConfig.Model}
+	metadata := domain.SessionMetadata{Branch: ws.Branch, WorkspacePath: ws.Path, RuntimeHandleID: handle.ID, Prompt: prompt, Model: agentConfig.Model, ModelEffort: agentConfig.ModelEffort}
 	if err := m.lcm.MarkSpawned(ctx, id, metadata); err != nil {
 		_ = m.runtime.Destroy(ctx, handle)
 		m.rollbackPreparedSpawnWorkspace(ctx, rec, ws, workspaceProject)
@@ -507,10 +516,23 @@ func effectiveAgentConfig(kind domain.SessionKind, cfg domain.ProjectConfig) por
 	if override.Model != "" {
 		merged.Model = override.Model
 	}
+	if override.ModelEffort != "" {
+		merged.ModelEffort = override.ModelEffort
+	}
 	if override.Permissions != "" {
 		merged.Permissions = override.Permissions
 	}
 	return merged
+}
+
+func validateModelEffortForHarness(harness domain.AgentHarness, effort domain.ModelEffort) error {
+	if effort == "" {
+		return nil
+	}
+	if harness == domain.HarnessCodex {
+		return nil
+	}
+	return fmt.Errorf("modelEffort %q is not supported for harness %q", effort, harness)
 }
 
 func roleOverride(kind domain.SessionKind, cfg domain.ProjectConfig) domain.RoleOverride {
@@ -839,6 +861,17 @@ func (m *Manager) relaunchRestoredSession(ctx context.Context, rec domain.Sessio
 	if rec.Metadata.Model != "" {
 		agentConfig.Model = rec.Metadata.Model
 	}
+	if rec.Metadata.ModelEffort != "" {
+		agentConfig.ModelEffort = rec.Metadata.ModelEffort
+	}
+	if err := agentConfig.Validate(); err != nil {
+		m.cleanupSystemPromptDir(rec.ID)
+		return domain.SessionRecord{}, fmt.Errorf("restore %s: %w", rec.ID, err)
+	}
+	if err := validateModelEffortForHarness(rec.Harness, agentConfig.ModelEffort); err != nil {
+		m.cleanupSystemPromptDir(rec.ID)
+		return domain.SessionRecord{}, fmt.Errorf("restore %s: %w", rec.ID, err)
+	}
 	env := m.runtimeEnv(rec.ID, rec.ProjectID, rec.IssueID, project.Config.Env)
 	m.augmentAgentRuntimeEnv(agent, env)
 	if err := m.prepareWorkspace(ctx, agent, rec.ID, ws.Path, systemPrompt, systemPromptFile, agentConfig, env); err != nil {
@@ -866,6 +899,7 @@ func (m *Manager) relaunchRestoredSession(ctx context.Context, rec domain.Sessio
 		AgentSessionID:  rec.Metadata.AgentSessionID,
 		Prompt:          rec.Metadata.Prompt,
 		Model:           agentConfig.Model,
+		ModelEffort:     agentConfig.ModelEffort,
 	}
 	if err := m.lcm.MarkSpawned(ctx, rec.ID, metadata); err != nil {
 		_ = m.runtime.Destroy(ctx, handle)

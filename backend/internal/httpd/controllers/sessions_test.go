@@ -271,7 +271,7 @@ func TestSessionsAPI_ListSpawnGetAndActions(t *testing.T) {
 		t.Fatalf("list leaked prompt: %s", body)
 	}
 
-	body, status, _ = doRequest(t, srv, "POST", "/api/v1/sessions", `{"projectId":"ao","issueId":"ISS-1","kind":"worker","harness":"codex","prompt":"fix","displayName":"my worker","model":"gpt-5.6-codex"}`)
+	body, status, _ = doRequest(t, srv, "POST", "/api/v1/sessions", `{"projectId":"ao","issueId":"ISS-1","kind":"worker","harness":"codex","prompt":"fix","displayName":"my worker","model":"gpt-5.6-codex","modelEffort":"max"}`)
 	if status != http.StatusCreated {
 		t.Fatalf("POST session = %d, want 201; body=%s", status, body)
 	}
@@ -287,6 +287,9 @@ func TestSessionsAPI_ListSpawnGetAndActions(t *testing.T) {
 	}
 	if svc.lastSpawn.Model != "gpt-5.6-codex" {
 		t.Fatalf("spawn model = %q, want gpt-5.6-codex", svc.lastSpawn.Model)
+	}
+	if svc.lastSpawn.ModelEffort != domain.ModelEffortMax {
+		t.Fatalf("spawn model effort = %q, want max", svc.lastSpawn.ModelEffort)
 	}
 
 	body, status, _ = doRequest(t, srv, "GET", "/api/v1/sessions/ao-2", "")

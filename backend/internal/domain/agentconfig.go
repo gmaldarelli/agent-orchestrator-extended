@@ -19,12 +19,29 @@ const (
 	PermissionModeBypassPermissions PermissionMode = "bypass-permissions"
 )
 
+// ModelEffort is the provider-neutral reasoning/effort tier AO can carry
+// through project config, per-spawn overrides, persistence, and adapters.
+type ModelEffort string
+
+// The known model effort tiers. Adapters must either apply the exact tier or
+// reject it; they must not silently downgrade to a lower native setting.
+const (
+	ModelEffortMinimal   ModelEffort = "minimal"
+	ModelEffortLow       ModelEffort = "low"
+	ModelEffortMedium    ModelEffort = "medium"
+	ModelEffortHigh      ModelEffort = "high"
+	ModelEffortExtraHigh ModelEffort = "extra-high"
+	ModelEffortMax       ModelEffort = "max"
+)
+
 // AgentConfig is the typed per-project agent configuration. It replaces the
 // former free-form map so the fields are validated and the API/UI render a
 // real form rather than arbitrary JSON. An empty value (IsZero) means unset.
 type AgentConfig struct {
 	// Model overrides the agent's default model (e.g. claude-opus-4-5).
 	Model string `json:"model,omitempty"`
+	// ModelEffort overrides the agent's default reasoning/effort tier.
+	ModelEffort ModelEffort `json:"modelEffort,omitempty" enum:"minimal,low,medium,high,extra-high,max"`
 	// Permissions sets the agent's starting permission mode. Empty is treated
 	// like the adapter's default mode.
 	Permissions PermissionMode `json:"permissions,omitempty"`
@@ -41,8 +58,13 @@ func (c AgentConfig) IsZero() bool {
 func (c AgentConfig) Validate() error {
 	switch c.Permissions {
 	case "", PermissionModeDefault, PermissionModeAcceptEdits, PermissionModeAuto, PermissionModeBypassPermissions:
-		return nil
 	default:
 		return fmt.Errorf("invalid permissions %q: want one of default, accept-edits, auto, bypass-permissions", c.Permissions)
+	}
+	switch c.ModelEffort {
+	case "", ModelEffortMinimal, ModelEffortLow, ModelEffortMedium, ModelEffortHigh, ModelEffortExtraHigh, ModelEffortMax:
+		return nil
+	default:
+		return fmt.Errorf("invalid modelEffort %q: want one of minimal, low, medium, high, extra-high, max", c.ModelEffort)
 	}
 }

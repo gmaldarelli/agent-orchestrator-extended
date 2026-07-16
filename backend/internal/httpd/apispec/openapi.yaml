@@ -1748,6 +1748,15 @@ components:
       properties:
         model:
           type: string
+        modelEffort:
+          enum:
+          - minimal
+          - low
+          - medium
+          - high
+          - extra-high
+          - max
+          type: string
         permissions:
           type: string
       type: object
@@ -2887,6 +2896,15 @@ components:
           - orchestrator
           type: string
         model:
+          type: string
+        modelEffort:
+          enum:
+          - minimal
+          - low
+          - medium
+          - high
+          - extra-high
+          - max
           type: string
         projectId:
           type: string

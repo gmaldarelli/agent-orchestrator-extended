@@ -836,6 +836,7 @@ func TestSessionModelPersists(t *testing.T) {
 	seedProject(t, s, "mer")
 	rec := sampleRecord("mer")
 	rec.Metadata.Model = "claude-opus-4-8"
+	rec.Metadata.ModelEffort = domain.ModelEffortMax
 	created, err := s.CreateSession(ctx, rec)
 	if err != nil {
 		t.Fatalf("create session: %v", err)
@@ -846,6 +847,9 @@ func TestSessionModelPersists(t *testing.T) {
 	}
 	if got.Metadata.Model != "claude-opus-4-8" {
 		t.Fatalf("model not persisted across reload: got %q want %q", got.Metadata.Model, "claude-opus-4-8")
+	}
+	if got.Metadata.ModelEffort != domain.ModelEffortMax {
+		t.Fatalf("model effort not persisted across reload: got %q want max", got.Metadata.ModelEffort)
 	}
 }
 
@@ -863,5 +867,8 @@ func TestSessionModelEmptyByDefault(t *testing.T) {
 	}
 	if got.Metadata.Model != "" {
 		t.Fatalf("expected empty model, got %q", got.Metadata.Model)
+	}
+	if got.Metadata.ModelEffort != "" {
+		t.Fatalf("expected empty model effort, got %q", got.Metadata.ModelEffort)
 	}
 }
