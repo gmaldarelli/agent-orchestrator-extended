@@ -69,6 +69,7 @@ export function SessionView({ sessionId }: SessionViewProps) {
 		previewUrl,
 		previewRevision,
 	});
+	const refreshBrowserBounds = browserView.refreshBounds;
 	const browserAnnotationQueue = useBrowserAnnotationQueue({
 		sessionId: session?.id,
 		navUrl: browserView.navState.url,
@@ -181,6 +182,7 @@ export function SessionView({ sessionId }: SessionViewProps) {
 	// with the expand()/collapse() effect above.
 	const handleInspectorResize = useCallback(
 		(size: PanelSize) => {
+			refreshBrowserBounds();
 			if (inspectorSeparatorRef.current?.getAttribute("data-separator") !== "active") return;
 			const open = useUiStore.getState().inspectorOpenBySessionId[sessionId] ?? false;
 			if (size.asPercentage > 0) {
@@ -190,7 +192,7 @@ export function SessionView({ sessionId }: SessionViewProps) {
 				setInspectorOpen(false, sessionId);
 			}
 		},
-		[sessionId, setInspectorOpen],
+		[refreshBrowserBounds, sessionId, setInspectorOpen],
 	);
 
 	if (!session && !workspaceQuery.isLoading) {

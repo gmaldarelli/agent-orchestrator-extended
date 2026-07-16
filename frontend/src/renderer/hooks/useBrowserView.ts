@@ -39,6 +39,7 @@ export type BrowserViewModel = {
 	goForward: () => Promise<void>;
 	reload: () => Promise<void>;
 	stop: () => Promise<void>;
+	refreshBounds: () => void;
 	destroy: () => void;
 	annotationMode: boolean;
 	setAnnotationMode: (enabled: boolean) => Promise<void>;
@@ -474,6 +475,7 @@ export function useBrowserView({
 		goForward: () => (hasNativeBrowser ? withView((id) => window.ao!.browser.goForward(id)) : Promise.resolve()),
 		reload: () => (hasNativeBrowser ? withView((id) => window.ao!.browser.reload(id)) : Promise.resolve()),
 		stop: () => (hasNativeBrowser ? withView((id) => window.ao!.browser.stop(id)) : Promise.resolve()),
+		refreshBounds: scheduleSettleMeasure,
 		destroy,
 		annotationMode,
 		setAnnotationMode,

@@ -22,6 +22,7 @@ const hookState = vi.hoisted(() => ({
 	goForward: vi.fn(),
 	reload: vi.fn(),
 	stop: vi.fn(),
+	refreshBounds: vi.fn(),
 	setAnnotationMode: vi.fn(),
 	previewUrl: undefined as string | undefined,
 	navState: {
@@ -46,6 +47,7 @@ vi.mock("../hooks/useBrowserView", () => ({
 			goForward: hookState.goForward,
 			reload: hookState.reload,
 			stop: hookState.stop,
+			refreshBounds: hookState.refreshBounds,
 			annotationMode: false,
 			setAnnotationMode: hookState.setAnnotationMode,
 		};
@@ -122,6 +124,7 @@ describe("BrowserPanel", () => {
 		hookState.goForward.mockReset();
 		hookState.reload.mockReset();
 		hookState.stop.mockReset();
+		hookState.refreshBounds.mockReset();
 		hookState.setAnnotationMode.mockReset();
 		hookState.setAnnotationMode.mockResolvedValue(undefined);
 		postMock.mockReset();

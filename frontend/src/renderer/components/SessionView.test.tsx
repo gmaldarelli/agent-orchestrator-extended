@@ -77,7 +77,10 @@ vi.mock("./BrowserPanel", () => ({
 		retryQueued: vi.fn(),
 	}),
 }));
-const browserDestroy = vi.hoisted(() => vi.fn());
+const { browserDestroy, browserRefreshBounds } = vi.hoisted(() => ({
+	browserDestroy: vi.fn(),
+	browserRefreshBounds: vi.fn(),
+}));
 vi.mock("../hooks/useBrowserView", () => ({
 	useBrowserView: () => ({
 		viewId: "browser:sess-1",
@@ -95,6 +98,7 @@ vi.mock("../hooks/useBrowserView", () => ({
 		goForward: vi.fn(),
 		reload: vi.fn(),
 		stop: vi.fn(),
+		refreshBounds: browserRefreshBounds,
 		destroy: browserDestroy,
 	}),
 }));
@@ -188,6 +192,7 @@ describe("SessionView", () => {
 		useUiStore.setState({ isInspectorOpen: true, inspectorOpenBySessionId: { "sess-1": true } });
 		panels.clear();
 		browserDestroy.mockReset();
+		browserRefreshBounds.mockReset();
 	});
 
 	// Regression: react-resizable-panels v4 treats bare numeric sizes as PIXELS
@@ -251,6 +256,7 @@ describe("SessionView", () => {
 		// Dragging past minSize collapses the panel → store follows.
 		act(() => entry.onResize?.({ asPercentage: 0, inPixels: 0 }));
 		expect(useUiStore.getState().inspectorOpenBySessionId["sess-1"]).toBe(false);
+		expect(browserRefreshBounds).toHaveBeenCalled();
 
 		// Dragging it back open reopens + persists the width.
 		act(() => entry.onResize?.({ asPercentage: 31.5, inPixels: 400 }));
