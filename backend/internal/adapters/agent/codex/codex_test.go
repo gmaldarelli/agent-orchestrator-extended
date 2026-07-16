@@ -471,7 +471,10 @@ func TestGetRestoreCommandReadsAgentSessionID(t *testing.T) {
 		Permissions:      ports.PermissionModeAuto,
 		SystemPrompt:     "restore inline wins",
 		SystemPromptFile: filepath.Join("tmp", "restore-system.md"),
-		Config:           ports.AgentConfig{ModelEffort: ports.ModelEffortMax},
+		Config: ports.AgentConfig{
+			Model:       "  gpt-5.6-sol  ",
+			ModelEffort: ports.ModelEffortExtraHigh,
+		},
 		Session: ports.SessionRef{
 			Metadata:      map[string]string{ports.MetadataKeyAgentSessionID: "thread-123"},
 			WorkspacePath: workspace,
@@ -499,7 +502,8 @@ func TestGetRestoreCommandReadsAgentSessionID(t *testing.T) {
 	want = append(want,
 		"-c", `projects={`+codexTOMLConfigString(workspace)+`={trust_level="trusted"}}`,
 		"-c", "developer_instructions="+codexTOMLConfigString("restore inline wins"),
-		"-c", `model_reasoning_effort='max'`,
+		"-c", `model_reasoning_effort='xhigh'`,
+		"--model", "gpt-5.6-sol",
 		"thread-123",
 	)
 	if !reflect.DeepEqual(cmd, want) {
@@ -535,6 +539,25 @@ func TestGetRestoreCommandFalseWithoutAgentSessionID(t *testing.T) {
 				t.Fatalf("cmd = %#v, want nil", cmd)
 			}
 		})
+	}
+}
+
+func TestGetRestoreCommandNoModelByDefault(t *testing.T) {
+	plugin := &Plugin{resolvedBinary: "codex"}
+	cmd, ok, err := plugin.GetRestoreCommand(context.Background(), ports.RestoreConfig{
+		Config: ports.AgentConfig{Model: "   "},
+		Session: ports.SessionRef{
+			Metadata: map[string]string{ports.MetadataKeyAgentSessionID: "thread-123"},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok {
+		t.Fatal("ok = false, want true")
+	}
+	if contains(cmd, "--model") {
+		t.Fatalf("unexpected --model in restore command %#v", cmd)
 	}
 }
 
@@ -689,31 +712,93 @@ func TestGetLaunchCommandAppliesModel(t *testing.T) {
 }
 
 func TestGetLaunchCommandAppliesModelEffort(t *testing.T) {
+	tests := []struct {
+		name       string
+		effort     ports.ModelEffort
+		wantNative string
+	}{
+		{name: "empty omits config"},
+		{name: "high stays high", effort: ports.ModelEffortHigh, wantNative: "high"},
+		{name: "extra-high maps to xhigh", effort: ports.ModelEffortExtraHigh, wantNative: "xhigh"},
+		{name: "max stays max", effort: ports.ModelEffortMax, wantNative: "max"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			plugin := &Plugin{resolvedBinary: "codex"}
+			cmd, err := plugin.GetLaunchCommand(context.Background(), ports.LaunchConfig{
+				Config: ports.AgentConfig{ModelEffort: tt.effort},
+				Prompt: "do the thing",
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			effortIdx, dashIdx := -1, -1
+			for i, arg := range cmd {
+				if strings.HasPrefix(arg, "model_reasoning_effort=") && effortIdx == -1 {
+					effortIdx = i
+				}
+				if arg == "--" && dashIdx == -1 {
+					dashIdx = i
+				}
+			}
+			if tt.wantNative == "" {
+				if effortIdx != -1 {
+					t.Fatalf("unexpected model effort config in %#v", cmd)
+				}
+				return
+			}
+
+			wantConfig := "model_reasoning_effort=" + codexTOMLConfigString(tt.wantNative)
+			if !containsSubsequence(cmd, []string{"-c", wantConfig}) {
+				t.Fatalf("command %#v missing %q", cmd, wantConfig)
+			}
+			if effortIdx == -1 {
+				t.Fatalf("model_reasoning_effort not found in %#v", cmd)
+			}
+			if dashIdx != -1 && effortIdx > dashIdx {
+				t.Fatalf("model effort config (%d) must precede prompt separator -- (%d): %#v", effortIdx, dashIdx, cmd)
+			}
+		})
+	}
+}
+
+func TestCodexCommandsRejectUnknownModelEffort(t *testing.T) {
 	plugin := &Plugin{resolvedBinary: "codex"}
-	cmd, err := plugin.GetLaunchCommand(context.Background(), ports.LaunchConfig{
-		Config: ports.AgentConfig{ModelEffort: ports.ModelEffortMax},
-		Prompt: "do the thing",
-	})
-	if err != nil {
-		t.Fatal(err)
+	invalid := ports.ModelEffort("extreme")
+	tests := []struct {
+		name string
+		run  func() error
+	}{
+		{
+			name: "launch",
+			run: func() error {
+				_, err := plugin.GetLaunchCommand(context.Background(), ports.LaunchConfig{
+					Config: ports.AgentConfig{ModelEffort: invalid},
+				})
+				return err
+			},
+		},
+		{
+			name: "restore",
+			run: func() error {
+				_, _, err := plugin.GetRestoreCommand(context.Background(), ports.RestoreConfig{
+					Config: ports.AgentConfig{ModelEffort: invalid},
+					Session: ports.SessionRef{
+						Metadata: map[string]string{ports.MetadataKeyAgentSessionID: "thread-123"},
+					},
+				})
+				return err
+			},
+		},
 	}
-	if !containsSubsequence(cmd, []string{"-c", `model_reasoning_effort='max'`}) {
-		t.Fatalf("command %#v missing model_reasoning_effort config", cmd)
-	}
-	effortIdx, dashIdx := -1, -1
-	for i, a := range cmd {
-		if a == `model_reasoning_effort='max'` && effortIdx == -1 {
-			effortIdx = i
-		}
-		if a == "--" && dashIdx == -1 {
-			dashIdx = i
-		}
-	}
-	if effortIdx == -1 {
-		t.Fatalf("model_reasoning_effort not found in %#v", cmd)
-	}
-	if dashIdx != -1 && effortIdx > dashIdx {
-		t.Fatalf("model effort config (%d) must precede prompt separator -- (%d): %#v", effortIdx, dashIdx, cmd)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.run()
+			if err == nil || !strings.Contains(err.Error(), `codex: invalid modelEffort "extreme"`) {
+				t.Fatalf("err = %v, want explicit invalid modelEffort error", err)
+			}
+		})
 	}
 }
 

@@ -89,7 +89,9 @@ func (p *Plugin) GetLaunchCommand(ctx context.Context, cfg ports.LaunchConfig) (
 	} else if cfg.SystemPromptFile != "" {
 		cmd = append(cmd, "-c", "model_instructions_file="+cfg.SystemPromptFile)
 	}
-	appendModelEffortConfig(&cmd, cfg.Config.ModelEffort)
+	if err := appendModelEffortConfig(&cmd, cfg.Config.ModelEffort); err != nil {
+		return nil, err
+	}
 
 	// Per-session model override (set by `ao spawn --model` or project worker
 	// config). Must precede the `--` prompt separator so codex parses it as a
@@ -137,16 +139,29 @@ func (p *Plugin) GetRestoreCommand(ctx context.Context, cfg ports.RestoreConfig)
 	} else if cfg.SystemPromptFile != "" {
 		cmd = append(cmd, "-c", "model_instructions_file="+cfg.SystemPromptFile)
 	}
-	appendModelEffortConfig(&cmd, cfg.Config.ModelEffort)
+	if err := appendModelEffortConfig(&cmd, cfg.Config.ModelEffort); err != nil {
+		return nil, false, err
+	}
+	if model := strings.TrimSpace(cfg.Config.Model); model != "" {
+		cmd = append(cmd, "--model", model)
+	}
 	cmd = append(cmd, agentSessionID)
 	return cmd, true, nil
 }
 
-func appendModelEffortConfig(cmd *[]string, effort ports.ModelEffort) {
-	if effort == "" {
-		return
+func appendModelEffortConfig(cmd *[]string, effort ports.ModelEffort) error {
+	nativeEffort := string(effort)
+	switch effort {
+	case "":
+		return nil
+	case ports.ModelEffortMinimal, ports.ModelEffortLow, ports.ModelEffortMedium, ports.ModelEffortHigh, ports.ModelEffortMax:
+	case ports.ModelEffortExtraHigh:
+		nativeEffort = "xhigh"
+	default:
+		return fmt.Errorf("codex: invalid modelEffort %q", effort)
 	}
-	*cmd = append(*cmd, "-c", "model_reasoning_effort="+codexTOMLConfigString(string(effort)))
+	*cmd = append(*cmd, "-c", "model_reasoning_effort="+codexTOMLConfigString(nativeEffort))
+	return nil
 }
 
 // SessionInfo surfaces Codex hook-derived metadata. Metadata is intentionally
