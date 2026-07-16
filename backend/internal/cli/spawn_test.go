@@ -191,14 +191,14 @@ func TestSpawnResolvesProjectFromEnvAndDefaultAgent(t *testing.T) {
 	writeRunFileFor(t, cfg, srv)
 	t.Setenv("AO_PROJECT_ID", "demo")
 
-	out, errOut, err := executeCLI(t, Deps{ProcessAlive: func(int) bool { return true }}, "spawn", "--prompt", "Fix failing tests in auth", "--model", "gpt-5.6-codex")
+	out, errOut, err := executeCLI(t, Deps{ProcessAlive: func(int) bool { return true }}, "spawn", "--prompt", "Fix failing tests in auth", "--model", "gpt-5.6-codex", "--model-effort", "max")
 	if err != nil {
 		t.Fatalf("spawn failed: %v stderr=%s", err, errOut)
 	}
 	if !strings.Contains(out, "spawned session demo-11") {
 		t.Fatalf("output missing spawn: %s", out)
 	}
-	if req.ProjectID != "demo" || req.Harness != "codex" || req.DisplayName != "Fix failing tests in" || req.Model != "gpt-5.6-codex" {
+	if req.ProjectID != "demo" || req.Harness != "codex" || req.DisplayName != "Fix failing tests in" || req.Model != "gpt-5.6-codex" || req.ModelEffort != "max" {
 		t.Fatalf("spawn request = %#v", req)
 	}
 	want := []string{"GET /api/v1/projects/demo", "POST /api/v1/agents/refresh", "POST /api/v1/sessions"}

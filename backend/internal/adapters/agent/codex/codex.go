@@ -89,6 +89,7 @@ func (p *Plugin) GetLaunchCommand(ctx context.Context, cfg ports.LaunchConfig) (
 	} else if cfg.SystemPromptFile != "" {
 		cmd = append(cmd, "-c", "model_instructions_file="+cfg.SystemPromptFile)
 	}
+	appendModelEffortConfig(&cmd, cfg.Config.ModelEffort)
 
 	// Per-session model override (set by `ao spawn --model` or project worker
 	// config). Must precede the `--` prompt separator so codex parses it as a
@@ -136,8 +137,16 @@ func (p *Plugin) GetRestoreCommand(ctx context.Context, cfg ports.RestoreConfig)
 	} else if cfg.SystemPromptFile != "" {
 		cmd = append(cmd, "-c", "model_instructions_file="+cfg.SystemPromptFile)
 	}
+	appendModelEffortConfig(&cmd, cfg.Config.ModelEffort)
 	cmd = append(cmd, agentSessionID)
 	return cmd, true, nil
+}
+
+func appendModelEffortConfig(cmd *[]string, effort ports.ModelEffort) {
+	if effort == "" {
+		return
+	}
+	*cmd = append(*cmd, "-c", "model_reasoning_effort="+codexTOMLConfigString(string(effort)))
 }
 
 // SessionInfo surfaces Codex hook-derived metadata. Metadata is intentionally

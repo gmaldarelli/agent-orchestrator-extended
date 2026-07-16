@@ -27,5 +27,6 @@ type SpawnConfig struct {
 	DisplayName string
 	// Model, when set, overrides the resolved agent config's model for this
 	// session only (per-spawn override of project/role worker.agentConfig.model).
-	Model string
+	Model       string
+	ModelEffort domain.ModelEffort
 }

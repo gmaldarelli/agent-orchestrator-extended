@@ -42,6 +42,9 @@ type SessionMetadata struct {
 	// or resolved project/role config), persisted so a restart restores the same
 	// model. Empty means fall back to the resolved project/role config on restore.
 	Model string `json:"model,omitempty"`
+	// ModelEffort is the reasoning/effort tier this session launched with.
+	// Empty means fall back to the resolved project/role config on restore.
+	ModelEffort ModelEffort `json:"modelEffort,omitempty"`
 }
 
 // SessionRecord is the persistence shape. It intentionally stores only durable

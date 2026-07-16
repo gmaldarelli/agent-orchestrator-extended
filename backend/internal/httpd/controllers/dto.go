@@ -155,8 +155,9 @@ type SpawnSessionRequest struct {
 	// DisplayName is the sidebar label for the session, capped at 20 characters.
 	// `ao spawn --name` always sets it; other clients (e.g. the desktop new-task
 	// dialog) may omit it and fall back to the session id in the read model.
-	DisplayName string `json:"displayName,omitempty" maxLength:"20"`
-	Model       string `json:"model,omitempty"`
+	DisplayName string             `json:"displayName,omitempty" maxLength:"20"`
+	Model       string             `json:"model,omitempty"`
+	ModelEffort domain.ModelEffort `json:"modelEffort,omitempty" enum:"minimal,low,medium,high,extra-high,max"`
 }
 
 // SessionResponse is the { session } body shared by session create/get.

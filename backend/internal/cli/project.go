@@ -76,6 +76,7 @@ type workspaceRepoDetails struct {
 // agentConfig mirrors the daemon's typed domain.AgentConfig for the CLI client.
 type agentConfig struct {
 	Model       string `json:"model,omitempty"`
+	ModelEffort string `json:"modelEffort,omitempty"`
 	Permissions string `json:"permissions,omitempty"`
 }
 
@@ -121,6 +122,7 @@ type projectSetConfigOptions struct {
 	defaultBranch     string
 	sessionPrefix     string
 	model             string
+	modelEffort       string
 	permission        string
 	workerAgent       string
 	orchestratorAgent string
@@ -312,6 +314,7 @@ func newProjectSetConfigCommand(ctx *commandContext) *cobra.Command {
 	f.StringVar(&opts.defaultBranch, "default-branch", "", "Base branch new session worktrees are created from")
 	f.StringVar(&opts.sessionPrefix, "session-prefix", "", "Displayed session-id prefix")
 	f.StringVar(&opts.model, "model", "", "Agent model override (e.g. claude-opus-4-5)")
+	f.StringVar(&opts.modelEffort, "model-effort", "", "Agent model effort: minimal, low, medium, high, extra-high, max")
 	f.StringVar(&opts.permission, "permission", "", "Permission mode: default, accept-edits, auto, bypass-permissions")
 	f.StringVar(&opts.workerAgent, "worker-agent", "", "Harness override for worker sessions")
 	f.StringVar(&opts.orchestratorAgent, "orchestrator-agent", "", "Harness override for orchestrator sessions")
@@ -359,7 +362,7 @@ func buildProjectConfig(opts projectSetConfigOptions) (projectConfig, error) {
 		AgentRules:        opts.agentRules,
 		AgentRulesFile:    opts.agentRulesFile,
 		OrchestratorRules: opts.orchestratorRules,
-		AgentConfig:       agentConfig{Model: opts.model, Permissions: opts.permission},
+		AgentConfig:       agentConfig{Model: opts.model, ModelEffort: opts.modelEffort, Permissions: opts.permission},
 		Worker:            roleOverride{Agent: opts.workerAgent},
 		Orchestrator:      roleOverride{Agent: opts.orchestratorAgent},
 		TrackerIntake: trackerIntakeConfig{

@@ -209,6 +209,7 @@ func rowToRecord(row gen.Session) domain.SessionRecord {
 			PreviewURL:      row.PreviewURL,
 			PreviewRevision: row.PreviewRevision,
 			Model:           row.Model,
+			ModelEffort:     domain.ModelEffort(row.ModelEffort),
 		},
 		CreatedAt: row.CreatedAt,
 		UpdatedAt: row.UpdatedAt,
@@ -237,6 +238,7 @@ func recordToInsert(rec domain.SessionRecord, num int64) gen.InsertSessionParams
 		PreviewURL:      rec.Metadata.PreviewURL,
 		PreviewRevision: rec.Metadata.PreviewRevision,
 		Model:           rec.Metadata.Model,
+		ModelEffort:     string(rec.Metadata.ModelEffort),
 		CreatedAt:       rec.CreatedAt,
 		UpdatedAt:       rec.UpdatedAt,
 	}
@@ -262,6 +264,7 @@ func recordToUpdate(rec domain.SessionRecord) gen.UpdateSessionParams {
 		PreviewURL:      rec.Metadata.PreviewURL,
 		PreviewRevision: rec.Metadata.PreviewRevision,
 		Model:           rec.Metadata.Model,
+		ModelEffort:     string(rec.Metadata.ModelEffort),
 		UpdatedAt:       rec.UpdatedAt,
 	}
 }

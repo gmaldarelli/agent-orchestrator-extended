@@ -182,6 +182,7 @@ type Session struct {
 	PreviewURL      string
 	PreviewRevision int64
 	Model           string
+	ModelEffort     string
 }
 
 type SessionWorktree struct {

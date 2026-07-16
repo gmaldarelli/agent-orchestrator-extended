@@ -471,6 +471,7 @@ func TestGetRestoreCommandReadsAgentSessionID(t *testing.T) {
 		Permissions:      ports.PermissionModeAuto,
 		SystemPrompt:     "restore inline wins",
 		SystemPromptFile: filepath.Join("tmp", "restore-system.md"),
+		Config:           ports.AgentConfig{ModelEffort: ports.ModelEffortMax},
 		Session: ports.SessionRef{
 			Metadata:      map[string]string{ports.MetadataKeyAgentSessionID: "thread-123"},
 			WorkspacePath: workspace,
@@ -498,6 +499,7 @@ func TestGetRestoreCommandReadsAgentSessionID(t *testing.T) {
 	want = append(want,
 		"-c", `projects={`+codexTOMLConfigString(workspace)+`={trust_level="trusted"}}`,
 		"-c", "developer_instructions="+codexTOMLConfigString("restore inline wins"),
+		"-c", `model_reasoning_effort='max'`,
 		"thread-123",
 	)
 	if !reflect.DeepEqual(cmd, want) {
@@ -683,6 +685,35 @@ func TestGetLaunchCommandAppliesModel(t *testing.T) {
 	}
 	if dashIdx != -1 && modelIdx > dashIdx {
 		t.Fatalf("--model (%d) must precede prompt separator -- (%d): %#v", modelIdx, dashIdx, cmd)
+	}
+}
+
+func TestGetLaunchCommandAppliesModelEffort(t *testing.T) {
+	plugin := &Plugin{resolvedBinary: "codex"}
+	cmd, err := plugin.GetLaunchCommand(context.Background(), ports.LaunchConfig{
+		Config: ports.AgentConfig{ModelEffort: ports.ModelEffortMax},
+		Prompt: "do the thing",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !containsSubsequence(cmd, []string{"-c", `model_reasoning_effort='max'`}) {
+		t.Fatalf("command %#v missing model_reasoning_effort config", cmd)
+	}
+	effortIdx, dashIdx := -1, -1
+	for i, a := range cmd {
+		if a == `model_reasoning_effort='max'` && effortIdx == -1 {
+			effortIdx = i
+		}
+		if a == "--" && dashIdx == -1 {
+			dashIdx = i
+		}
+	}
+	if effortIdx == -1 {
+		t.Fatalf("model_reasoning_effort not found in %#v", cmd)
+	}
+	if dashIdx != -1 && effortIdx > dashIdx {
+		t.Fatalf("model effort config (%d) must precede prompt separator -- (%d): %#v", effortIdx, dashIdx, cmd)
 	}
 }
 

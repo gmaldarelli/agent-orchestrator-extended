@@ -34,6 +34,7 @@ type spawnOptions struct {
 	noTakeover     bool
 	skipAgentCheck bool
 	model          string
+	modelEffort    string
 }
 
 // spawnRequest mirrors the daemon's SpawnSessionRequest body for
@@ -46,6 +47,7 @@ type spawnRequest struct {
 	Prompt      string `json:"prompt,omitempty"`
 	DisplayName string `json:"displayName,omitempty"`
 	Model       string `json:"model,omitempty"`
+	ModelEffort string `json:"modelEffort,omitempty"`
 }
 
 type spawnResult struct {
@@ -111,6 +113,7 @@ func newSpawnCommand(ctx *commandContext) *cobra.Command {
 				Prompt:      opts.prompt,
 				DisplayName: name,
 				Model:       opts.model,
+				ModelEffort: opts.modelEffort,
 			}
 			var res spawnResult
 			if err := ctx.postJSON(cmd.Context(), "sessions", req, &res); err != nil {
@@ -166,6 +169,7 @@ func newSpawnCommand(ctx *commandContext) *cobra.Command {
 	f.StringVar(&opts.issue, "issue", "", "Issue id to associate with the session")
 	f.StringVar(&opts.name, "name", "", "Display name shown in the sidebar (default: derived from --prompt, max 20 characters)")
 	f.StringVar(&opts.model, "model", "", "Override the model for this session only (per-spawn; overrides project worker.agentConfig.model)")
+	f.StringVar(&opts.modelEffort, "model-effort", "", "Override model effort for this session only: minimal, low, medium, high, extra-high, max")
 	f.StringVar(&opts.claimPR, "claim-pr", "", "Immediately claim an existing PR for the spawned session")
 	f.BoolVar(&opts.noTakeover, "no-takeover", false, "Refuse if another active session owns the claimed PR (requires --claim-pr)")
 	f.BoolVar(&opts.skipAgentCheck, "skip-agent-check", false, "Skip advisory agent catalog install/auth preflight before spawning")
