@@ -68,3 +68,24 @@ func (c AgentConfig) Validate() error {
 		return fmt.Errorf("invalid modelEffort %q: want one of minimal, low, medium, high, extra-high, max", c.ModelEffort)
 	}
 }
+
+// ValidateForHarness rejects settings that the selected agent harness cannot
+// apply. The provider-neutral vocabulary is validated first; an unset effort
+// is compatible with every harness.
+func (c AgentConfig) ValidateForHarness(h AgentHarness) error {
+	if err := c.Validate(); err != nil {
+		return err
+	}
+	if c.ModelEffort == "" {
+		return nil
+	}
+	switch h {
+	case HarnessCodex:
+		return nil
+	case HarnessClaudeCode:
+		if c.ModelEffort != ModelEffortMinimal {
+			return nil
+		}
+	}
+	return fmt.Errorf("modelEffort %q is not supported for harness %q", c.ModelEffort, h)
+}

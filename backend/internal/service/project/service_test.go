@@ -449,6 +449,55 @@ func TestManager_SetConfig(t *testing.T) {
 	wantCode(t, err, "PROJECT_NOT_FOUND")
 }
 
+func TestManager_RejectsHarnessIncompatibleProjectConfig(t *testing.T) {
+	tests := []struct {
+		name   string
+		config domain.ProjectConfig
+	}{
+		{
+			name: "worker agy inherits base effort",
+			config: domain.ProjectConfig{
+				AgentConfig: domain.AgentConfig{ModelEffort: domain.ModelEffortHigh},
+				Worker:      domain.RoleOverride{Harness: domain.HarnessAgy},
+			},
+		},
+		{
+			name: "worker claude code uses minimal effort",
+			config: domain.ProjectConfig{
+				Worker: domain.RoleOverride{
+					Harness:     domain.HarnessClaudeCode,
+					AgentConfig: domain.AgentConfig{ModelEffort: domain.ModelEffortMinimal},
+				},
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Run("add", func(t *testing.T) {
+				m := newManager(t)
+				_, err := m.Add(context.Background(), project.AddInput{
+					Path:      gitRepo(t),
+					ProjectID: ptr("ao"),
+					Config:    &tc.config,
+				})
+				wantCode(t, err, "INVALID_PROJECT_CONFIG")
+			})
+
+			t.Run("set config", func(t *testing.T) {
+				ctx := context.Background()
+				m := newManager(t)
+				if _, err := m.Add(ctx, project.AddInput{Path: gitRepo(t), ProjectID: ptr("ao")}); err != nil {
+					t.Fatalf("seed Add: %v", err)
+				}
+
+				_, err := m.SetConfig(ctx, "ao", project.SetConfigInput{Config: tc.config})
+				wantCode(t, err, "INVALID_PROJECT_CONFIG")
+			})
+		})
+	}
+}
+
 func TestManager_ListIncludesOnlySummarySafeProjectConfig(t *testing.T) {
 	ctx := context.Background()
 	m := newManager(t)

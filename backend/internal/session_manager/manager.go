@@ -269,10 +269,7 @@ func (m *Manager) Spawn(ctx context.Context, cfg ports.SpawnConfig) (domain.Sess
 	if cfg.ModelEffort != "" {
 		agentConfig.ModelEffort = cfg.ModelEffort
 	}
-	if err := agentConfig.Validate(); err != nil {
-		return domain.SessionRecord{}, fmt.Errorf("spawn: %w", err)
-	}
-	if err := validateModelEffortForHarness(cfg.Harness, agentConfig.ModelEffort); err != nil {
+	if err := agentConfig.ValidateForHarness(cfg.Harness); err != nil {
 		return domain.SessionRecord{}, fmt.Errorf("spawn: %w", err)
 	}
 
@@ -523,23 +520,6 @@ func effectiveAgentConfig(kind domain.SessionKind, cfg domain.ProjectConfig) por
 		merged.Permissions = override.Permissions
 	}
 	return merged
-}
-
-func validateModelEffortForHarness(harness domain.AgentHarness, effort domain.ModelEffort) error {
-	if effort == "" {
-		return nil
-	}
-	switch harness {
-	case domain.HarnessCodex:
-		return nil
-	case domain.HarnessClaudeCode:
-		if effort == domain.ModelEffortMinimal {
-			return fmt.Errorf("modelEffort %q is not supported for harness %q", effort, harness)
-		}
-		return nil
-	default:
-		return fmt.Errorf("modelEffort %q is not supported for harness %q", effort, harness)
-	}
 }
 
 func roleOverride(kind domain.SessionKind, cfg domain.ProjectConfig) domain.RoleOverride {
@@ -871,11 +851,7 @@ func (m *Manager) relaunchRestoredSession(ctx context.Context, rec domain.Sessio
 	if rec.Metadata.ModelEffort != "" {
 		agentConfig.ModelEffort = rec.Metadata.ModelEffort
 	}
-	if err := agentConfig.Validate(); err != nil {
-		m.cleanupSystemPromptDir(rec.ID)
-		return domain.SessionRecord{}, fmt.Errorf("restore %s: %w", rec.ID, err)
-	}
-	if err := validateModelEffortForHarness(rec.Harness, agentConfig.ModelEffort); err != nil {
+	if err := agentConfig.ValidateForHarness(rec.Harness); err != nil {
 		m.cleanupSystemPromptDir(rec.ID)
 		return domain.SessionRecord{}, fmt.Errorf("restore %s: %w", rec.ID, err)
 	}

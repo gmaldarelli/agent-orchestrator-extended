@@ -250,6 +250,27 @@ func TestProjectsAPI_AddValidationAndConflicts(t *testing.T) {
 
 }
 
+func TestProjectsAPI_RejectsHarnessIncompatibleProjectConfig(t *testing.T) {
+	srv := newTestServer(t)
+	repo := gitRepo(t, "incompatible-config")
+
+	body, status, _ := doRequest(t, srv, "POST", "/api/v1/projects", `{"path":`+quote(repo)+`,"projectId":"ao"}`)
+	if status != http.StatusCreated {
+		t.Fatalf("seed create = %d, want 201; body=%s", status, body)
+	}
+
+	// The worker's declared AGY harness inherits the base effort, making the
+	// effective role default unusable before it reaches spawn.
+	body, status, _ = doRequest(t, srv, "PUT", "/api/v1/projects/ao/config", `{"config":{"agentConfig":{"modelEffort":"high"},"worker":{"agent":"agy"}}}`)
+	assertErrorCode(t, body, status, http.StatusBadRequest, "INVALID_PROJECT_CONFIG")
+
+	// Project creation uses the same service validation rail for a role-local
+	// effort that Claude Code cannot apply.
+	otherRepo := gitRepo(t, "incompatible-config-add")
+	body, status, _ = doRequest(t, srv, "POST", "/api/v1/projects", `{"path":`+quote(otherRepo)+`,"projectId":"ao2","config":{"worker":{"agent":"claude-code","agentConfig":{"modelEffort":"minimal"}}}}`)
+	assertErrorCode(t, body, status, http.StatusBadRequest, "INVALID_PROJECT_CONFIG")
+}
+
 func TestProjectsAPI_InitializeRepository(t *testing.T) {
 	srv := newTestServer(t)
 
