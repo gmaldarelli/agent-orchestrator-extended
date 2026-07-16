@@ -25,4 +25,7 @@ type SpawnConfig struct {
 	// DisplayName is the user-facing sidebar label. Empty falls back to the
 	// session id in the read model (e.g. orchestrator sessions).
 	DisplayName string
+	// Model, when set, overrides the resolved agent config's model for this
+	// session only (per-spawn override of project/role worker.agentConfig.model).
+	Model string
 }

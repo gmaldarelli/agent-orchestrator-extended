@@ -28,6 +28,7 @@ type fakeSessionService struct {
 	cleanupProjects []domain.ProjectID
 	cleanupResult   []domain.SessionID
 	cleanupSkipped  []sessionsvc.CleanupSkipped
+	lastSpawn       ports.SpawnConfig
 	spawnErr        error
 	claimErr        error
 	listPRErr       error
@@ -57,6 +58,7 @@ func (f *fakeSessionService) List(_ context.Context, filter sessionsvc.ListFilte
 }
 
 func (f *fakeSessionService) Spawn(_ context.Context, cfg ports.SpawnConfig) (domain.Session, error) {
+	f.lastSpawn = cfg
 	if f.spawnErr != nil {
 		return domain.Session{}, f.spawnErr
 	}
@@ -269,7 +271,7 @@ func TestSessionsAPI_ListSpawnGetAndActions(t *testing.T) {
 		t.Fatalf("list leaked prompt: %s", body)
 	}
 
-	body, status, _ = doRequest(t, srv, "POST", "/api/v1/sessions", `{"projectId":"ao","issueId":"ISS-1","kind":"worker","harness":"codex","prompt":"fix","displayName":"my worker"}`)
+	body, status, _ = doRequest(t, srv, "POST", "/api/v1/sessions", `{"projectId":"ao","issueId":"ISS-1","kind":"worker","harness":"codex","prompt":"fix","displayName":"my worker","model":"gpt-5.6-codex"}`)
 	if status != http.StatusCreated {
 		t.Fatalf("POST session = %d, want 201; body=%s", status, body)
 	}
@@ -282,6 +284,9 @@ func TestSessionsAPI_ListSpawnGetAndActions(t *testing.T) {
 	}
 	if spawned.Session.DisplayName != "my worker" {
 		t.Fatalf("spawned displayName = %q, want %q", spawned.Session.DisplayName, "my worker")
+	}
+	if svc.lastSpawn.Model != "gpt-5.6-codex" {
+		t.Fatalf("spawn model = %q, want gpt-5.6-codex", svc.lastSpawn.Model)
 	}
 
 	body, status, _ = doRequest(t, srv, "GET", "/api/v1/sessions/ao-2", "")
