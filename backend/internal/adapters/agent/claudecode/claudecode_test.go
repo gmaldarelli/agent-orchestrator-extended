@@ -413,6 +413,27 @@ func TestGetRestoreCommandReappendsSystemPrompt(t *testing.T) {
 	}
 }
 
+func TestGetRestoreCommandReappliesAgentConfig(t *testing.T) {
+	cmd, ok, err := (&Plugin{resolvedBinary: "claude"}).GetRestoreCommand(context.Background(), ports.RestoreConfig{
+		Permissions: ports.PermissionModeBypassPermissions,
+		Config: ports.AgentConfig{
+			Model:       "claude-opus-4-5",
+			ModelEffort: ports.ModelEffortExtraHigh,
+		},
+		Session: ports.SessionRef{
+			ID:       "sess-r",
+			Metadata: map[string]string{ports.MetadataKeyAgentSessionID: "claude-native-1"},
+		},
+	})
+	if err != nil || !ok {
+		t.Fatalf("restore = (ok=%v, err=%v), want ok", ok, err)
+	}
+	want := []string{"claude", "--permission-mode", "bypassPermissions", "--model", "claude-opus-4-5", "--effort", "xhigh", "--resume", "claude-native-1"}
+	if !reflect.DeepEqual(cmd, want) {
+		t.Fatalf("restore cmd\nwant: %#v\n got: %#v", want, cmd)
+	}
+}
+
 func TestGetRestoreCommandReappendsSystemPromptFromFile(t *testing.T) {
 	promptFile := filepath.Join(t.TempDir(), "system.md")
 	if err := os.WriteFile(promptFile, []byte("file instructions\n"), 0600); err != nil {
@@ -478,6 +499,7 @@ func TestGetLaunchCommandAppliesAgentConfig(t *testing.T) {
 	cmd, err := p.GetLaunchCommand(context.Background(), ports.LaunchConfig{
 		Config: ports.AgentConfig{
 			Model:       "claude-opus-4-5",
+			ModelEffort: ports.ModelEffortMax,
 			Permissions: ports.PermissionModeAcceptEdits,
 		},
 	})
@@ -487,8 +509,34 @@ func TestGetLaunchCommandAppliesAgentConfig(t *testing.T) {
 	if !containsSubsequence(cmd, []string{"--model", "claude-opus-4-5"}) {
 		t.Fatalf("command %#v missing --model flag", cmd)
 	}
+	if !containsSubsequence(cmd, []string{"--effort", "max"}) {
+		t.Fatalf("command %#v missing --effort flag", cmd)
+	}
 	if !containsSubsequence(cmd, []string{"--permission-mode", "acceptEdits"}) {
 		t.Fatalf("command %#v missing config-driven permission mode", cmd)
+	}
+}
+
+func TestGetLaunchCommandMapsExtraHighEffort(t *testing.T) {
+	p := &Plugin{resolvedBinary: "claude"}
+	cmd, err := p.GetLaunchCommand(context.Background(), ports.LaunchConfig{
+		Config: ports.AgentConfig{ModelEffort: ports.ModelEffortExtraHigh},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !containsSubsequence(cmd, []string{"--effort", "xhigh"}) {
+		t.Fatalf("command %#v missing xhigh effort flag", cmd)
+	}
+}
+
+func TestGetLaunchCommandRejectsMinimalEffort(t *testing.T) {
+	p := &Plugin{resolvedBinary: "claude"}
+	_, err := p.GetLaunchCommand(context.Background(), ports.LaunchConfig{
+		Config: ports.AgentConfig{ModelEffort: ports.ModelEffortMinimal},
+	})
+	if err == nil {
+		t.Fatal("expected error for unsupported minimal effort")
 	}
 }
 

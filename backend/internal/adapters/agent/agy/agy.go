@@ -5,6 +5,7 @@ package agy
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"sync"
 
@@ -58,11 +59,31 @@ func (p *Plugin) Manifest() adapters.Manifest {
 	}
 }
 
+// GetConfigSpec reports the per-project agent config keys Agy understands.
+func (p *Plugin) GetConfigSpec(ctx context.Context) (ports.ConfigSpec, error) {
+	if err := ctx.Err(); err != nil {
+		return ports.ConfigSpec{}, err
+	}
+	return ports.ConfigSpec{
+		Fields: []ports.ConfigField{
+			{
+				Key:         "model",
+				Type:        ports.ConfigFieldString,
+				Description: "Model override passed to `agy --model`.",
+			},
+		},
+	}, nil
+}
+
 // GetLaunchCommand builds the argv to start an interactive Agy session.
 // Shape:
 //
 //	agy --add-dir <WorkspacePath> [--dangerously-skip-permissions] [--prompt-interactive <Prompt>]
 func (p *Plugin) GetLaunchCommand(ctx context.Context, cfg ports.LaunchConfig) (cmd []string, err error) {
+	if err := validateAgyAgentConfig(cfg.Config); err != nil {
+		return nil, err
+	}
+
 	binary, err := p.agyBinary(ctx)
 	if err != nil {
 		return nil, err
@@ -78,6 +99,10 @@ func (p *Plugin) GetLaunchCommand(ctx context.Context, cfg ports.LaunchConfig) (
 		cmd = append(cmd, "--dangerously-skip-permissions")
 	}
 
+	if model := strings.TrimSpace(cfg.Config.Model); model != "" {
+		cmd = append(cmd, "--model", model)
+	}
+
 	if cfg.Prompt != "" {
 		cmd = append(cmd, "--prompt-interactive", cfg.Prompt)
 	}
@@ -89,6 +114,9 @@ func (p *Plugin) GetLaunchCommand(ctx context.Context, cfg ports.LaunchConfig) (
 // `agy --add-dir <WorkspacePath> [--dangerously-skip-permissions] --conversation <agentSessionId>`.
 func (p *Plugin) GetRestoreCommand(ctx context.Context, cfg ports.RestoreConfig) (cmd []string, ok bool, err error) {
 	if err := ctx.Err(); err != nil {
+		return nil, false, err
+	}
+	if err := validateAgyAgentConfig(cfg.Config); err != nil {
 		return nil, false, err
 	}
 
@@ -112,8 +140,22 @@ func (p *Plugin) GetRestoreCommand(ctx context.Context, cfg ports.RestoreConfig)
 		cmd = append(cmd, "--dangerously-skip-permissions")
 	}
 
+	if model := strings.TrimSpace(cfg.Config.Model); model != "" {
+		cmd = append(cmd, "--model", model)
+	}
+
 	cmd = append(cmd, "--conversation", agentSessionID)
 	return cmd, true, nil
+}
+
+func validateAgyAgentConfig(cfg ports.AgentConfig) error {
+	if err := cfg.Validate(); err != nil {
+		return err
+	}
+	if cfg.ModelEffort != "" {
+		return fmt.Errorf("agy: modelEffort %q is not supported", cfg.ModelEffort)
+	}
+	return nil
 }
 
 // SessionInfo surfaces Agy hook-derived metadata.

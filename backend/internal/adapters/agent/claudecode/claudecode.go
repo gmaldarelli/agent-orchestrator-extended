@@ -115,6 +115,12 @@ func (p *Plugin) GetConfigSpec(ctx context.Context) (ports.ConfigSpec, error) {
 				Description: "Model override passed to `claude --model` (e.g. claude-opus-4-5).",
 			},
 			{
+				Key:         "modelEffort",
+				Type:        ports.ConfigFieldEnum,
+				Description: "Effort override passed to `claude --effort`.",
+				Enum:        []string{string(ports.ModelEffortLow), string(ports.ModelEffortMedium), string(ports.ModelEffortHigh), string(ports.ModelEffortExtraHigh), string(ports.ModelEffortMax)},
+			},
+			{
 				Key:         "permissions",
 				Type:        ports.ConfigFieldEnum,
 				Description: "Starting permission mode.",
@@ -146,7 +152,7 @@ func (p *Plugin) GetConfigSpec(ctx context.Context) (ports.ConfigSpec, error) {
 func (p *Plugin) GetLaunchCommand(ctx context.Context, cfg ports.LaunchConfig) (cmd []string, err error) {
 	// Defense-in-depth: the project service validates on write, but re-check
 	// here so a config written by any other path can't launch a bad command.
-	if err := cfg.Config.Validate(); err != nil {
+	if err := validateClaudeAgentConfig(cfg.Config); err != nil {
 		return nil, fmt.Errorf("claude-code: %w", err)
 	}
 
@@ -171,6 +177,9 @@ func (p *Plugin) GetLaunchCommand(ctx context.Context, cfg ports.LaunchConfig) (
 
 	if model := strings.TrimSpace(cfg.Config.Model); model != "" {
 		cmd = append(cmd, "--model", model)
+	}
+	if effort := claudeEffortArg(cfg.Config.ModelEffort); effort != "" {
+		cmd = append(cmd, "--effort", effort)
 	}
 
 	systemPrompt, err := resolveSystemPrompt(cfg)
@@ -228,6 +237,9 @@ func (p *Plugin) GetRestoreCommand(ctx context.Context, cfg ports.RestoreConfig)
 	if err := ctx.Err(); err != nil {
 		return nil, false, err
 	}
+	if err := validateClaudeAgentConfig(cfg.Config); err != nil {
+		return nil, false, fmt.Errorf("claude-code: %w", err)
+	}
 
 	sessionID := strings.TrimSpace(cfg.Session.Metadata[ports.MetadataKeyAgentSessionID])
 	if sessionID == "" && cfg.Session.ID != "" {
@@ -246,6 +258,12 @@ func (p *Plugin) GetRestoreCommand(ctx context.Context, cfg ports.RestoreConfig)
 	cmd = make([]string, 0, 7)
 	cmd = append(cmd, binary)
 	appendPermissionFlags(&cmd, cfg.Permissions)
+	if model := strings.TrimSpace(cfg.Config.Model); model != "" {
+		cmd = append(cmd, "--model", model)
+	}
+	if effort := claudeEffortArg(cfg.Config.ModelEffort); effort != "" {
+		cmd = append(cmd, "--effort", effort)
+	}
 	systemPrompt, err := resolveRestoreSystemPrompt(cfg)
 	if err != nil {
 		return nil, false, err
@@ -258,6 +276,27 @@ func (p *Plugin) GetRestoreCommand(ctx context.Context, cfg ports.RestoreConfig)
 	}
 	cmd = append(cmd, "--resume", sessionID)
 	return cmd, true, nil
+}
+
+func claudeEffortArg(effort ports.ModelEffort) string {
+	switch effort {
+	case ports.ModelEffortLow, ports.ModelEffortMedium, ports.ModelEffortHigh, ports.ModelEffortMax:
+		return string(effort)
+	case ports.ModelEffortExtraHigh:
+		return "xhigh"
+	default:
+		return ""
+	}
+}
+
+func validateClaudeAgentConfig(cfg ports.AgentConfig) error {
+	if err := cfg.Validate(); err != nil {
+		return err
+	}
+	if cfg.ModelEffort == ports.ModelEffortMinimal {
+		return fmt.Errorf("modelEffort %q is not supported by claude-code", cfg.ModelEffort)
+	}
+	return nil
 }
 
 // SessionInfo surfaces the normalized session metadata that the Claude Code
