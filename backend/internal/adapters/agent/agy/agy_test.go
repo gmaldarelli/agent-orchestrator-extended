@@ -24,6 +24,7 @@ func TestGetLaunchCommand(t *testing.T) {
 
 	cmd, err := plugin.GetLaunchCommand(context.Background(), ports.LaunchConfig{
 		Permissions:   ports.PermissionModeBypassPermissions,
+		Config:        ports.AgentConfig{Model: "gemini-3.5-flash-high"},
 		Prompt:        "fix this",
 		WorkspacePath: "/tmp/ws",
 	})
@@ -35,10 +36,21 @@ func TestGetLaunchCommand(t *testing.T) {
 		"agy",
 		"--add-dir", "/tmp/ws",
 		"--dangerously-skip-permissions",
+		"--model", "gemini-3.5-flash-high",
 		"--prompt-interactive", "fix this",
 	}
 	if !reflect.DeepEqual(cmd, want) {
 		t.Fatalf("unexpected command\nwant: %#v\n got: %#v", want, cmd)
+	}
+}
+
+func TestGetLaunchCommandRejectsModelEffort(t *testing.T) {
+	plugin := &Plugin{resolvedBinary: "agy"}
+	_, err := plugin.GetLaunchCommand(context.Background(), ports.LaunchConfig{
+		Config: ports.AgentConfig{ModelEffort: ports.ModelEffortHigh},
+	})
+	if err == nil {
+		t.Fatal("expected error for unsupported modelEffort")
 	}
 }
 
@@ -58,6 +70,7 @@ func TestGetRestoreCommand(t *testing.T) {
 
 	cmd, ok, err := plugin.GetRestoreCommand(context.Background(), ports.RestoreConfig{
 		Permissions: ports.PermissionModeBypassPermissions,
+		Config:      ports.AgentConfig{Model: "gemini-3.5-flash-high"},
 		Session: ports.SessionRef{
 			Metadata:      map[string]string{ports.MetadataKeyAgentSessionID: "native-id-123"},
 			WorkspacePath: "/tmp/ws",
@@ -74,10 +87,24 @@ func TestGetRestoreCommand(t *testing.T) {
 		"agy",
 		"--add-dir", "/tmp/ws",
 		"--dangerously-skip-permissions",
+		"--model", "gemini-3.5-flash-high",
 		"--conversation", "native-id-123",
 	}
 	if !reflect.DeepEqual(cmd, want) {
 		t.Fatalf("unexpected command\nwant: %#v\n got: %#v", want, cmd)
+	}
+}
+
+func TestGetRestoreCommandRejectsModelEffort(t *testing.T) {
+	plugin := &Plugin{resolvedBinary: "agy"}
+	_, _, err := plugin.GetRestoreCommand(context.Background(), ports.RestoreConfig{
+		Config: ports.AgentConfig{ModelEffort: ports.ModelEffortHigh},
+		Session: ports.SessionRef{
+			Metadata: map[string]string{ports.MetadataKeyAgentSessionID: "native-id-123"},
+		},
+	})
+	if err == nil {
+		t.Fatal("expected error for unsupported modelEffort")
 	}
 }
 

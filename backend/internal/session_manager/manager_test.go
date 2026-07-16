@@ -4628,15 +4628,51 @@ func TestSpawn_PerSpawnModelEffortOverridesConfig(t *testing.T) {
 func TestSpawn_ModelEffortRequiresSupportedHarness(t *testing.T) {
 	st := newFakeStore()
 	st.projects["mer"] = domain.ProjectRecord{ID: "mer", Config: domain.ProjectConfig{
-		Worker: domain.RoleOverride{Harness: domain.HarnessClaudeCode, AgentConfig: domain.AgentConfig{ModelEffort: domain.ModelEffortMax}},
+		Worker: domain.RoleOverride{Harness: domain.HarnessAgy, AgentConfig: domain.AgentConfig{ModelEffort: domain.ModelEffortMax}},
 	}}
 	agent := &recordingAgent{}
 	lookPath := func(string) (string, error) { return "/bin/true", nil }
 	m := New(Deps{Runtime: &fakeRuntime{}, Agents: singleAgent{agent: agent}, Workspace: &fakeWorkspace{}, Store: st, Messenger: &fakeMessenger{}, Lifecycle: &fakeLCM{store: st}, LookPath: lookPath})
 
 	_, err := m.Spawn(ctx, ports.SpawnConfig{ProjectID: "mer", Kind: domain.KindWorker})
-	if err == nil || !strings.Contains(err.Error(), `modelEffort "max" is not supported for harness "claude-code"`) {
+	if err == nil || !strings.Contains(err.Error(), `modelEffort "max" is not supported for harness "agy"`) {
 		t.Fatalf("spawn err = %v, want unsupported modelEffort", err)
+	}
+}
+
+func TestSpawn_ClaudeAllowsSupportedModelEffort(t *testing.T) {
+	st := newFakeStore()
+	st.projects["mer"] = domain.ProjectRecord{ID: "mer", Config: domain.ProjectConfig{
+		Worker: domain.RoleOverride{Harness: domain.HarnessClaudeCode, AgentConfig: domain.AgentConfig{ModelEffort: domain.ModelEffortMax}},
+	}}
+	agent := &recordingAgent{}
+	lookPath := func(string) (string, error) { return "/bin/true", nil }
+	m := New(Deps{Runtime: &fakeRuntime{}, Agents: singleAgent{agent: agent}, Workspace: &fakeWorkspace{}, Store: st, Messenger: &fakeMessenger{}, Lifecycle: &fakeLCM{store: st}, LookPath: lookPath})
+
+	rec, err := m.Spawn(ctx, ports.SpawnConfig{ProjectID: "mer", Kind: domain.KindWorker})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if agent.lastConfig.ModelEffort != domain.ModelEffortMax {
+		t.Fatalf("launch model effort = %q, want max", agent.lastConfig.ModelEffort)
+	}
+	if rec.Metadata.ModelEffort != domain.ModelEffortMax {
+		t.Fatalf("persisted model effort = %q, want max", rec.Metadata.ModelEffort)
+	}
+}
+
+func TestSpawn_ClaudeRejectsMinimalModelEffort(t *testing.T) {
+	st := newFakeStore()
+	st.projects["mer"] = domain.ProjectRecord{ID: "mer", Config: domain.ProjectConfig{
+		Worker: domain.RoleOverride{Harness: domain.HarnessClaudeCode, AgentConfig: domain.AgentConfig{ModelEffort: domain.ModelEffortMinimal}},
+	}}
+	agent := &recordingAgent{}
+	lookPath := func(string) (string, error) { return "/bin/true", nil }
+	m := New(Deps{Runtime: &fakeRuntime{}, Agents: singleAgent{agent: agent}, Workspace: &fakeWorkspace{}, Store: st, Messenger: &fakeMessenger{}, Lifecycle: &fakeLCM{store: st}, LookPath: lookPath})
+
+	_, err := m.Spawn(ctx, ports.SpawnConfig{ProjectID: "mer", Kind: domain.KindWorker})
+	if err == nil || !strings.Contains(err.Error(), `modelEffort "minimal" is not supported for harness "claude-code"`) {
+		t.Fatalf("spawn err = %v, want unsupported minimal effort", err)
 	}
 }
 

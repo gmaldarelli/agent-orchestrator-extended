@@ -529,10 +529,17 @@ func validateModelEffortForHarness(harness domain.AgentHarness, effort domain.Mo
 	if effort == "" {
 		return nil
 	}
-	if harness == domain.HarnessCodex {
+	switch harness {
+	case domain.HarnessCodex:
 		return nil
+	case domain.HarnessClaudeCode:
+		if effort == domain.ModelEffortMinimal {
+			return fmt.Errorf("modelEffort %q is not supported for harness %q", effort, harness)
+		}
+		return nil
+	default:
+		return fmt.Errorf("modelEffort %q is not supported for harness %q", effort, harness)
 	}
-	return fmt.Errorf("modelEffort %q is not supported for harness %q", effort, harness)
 }
 
 func roleOverride(kind domain.SessionKind, cfg domain.ProjectConfig) domain.RoleOverride {
