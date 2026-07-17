@@ -52,6 +52,110 @@ func TestProjectConfigValidate(t *testing.T) {
 	}
 }
 
+func TestProjectConfigValidateHarnessAwareEffort(t *testing.T) {
+	tests := []struct {
+		name    string
+		cfg     ProjectConfig
+		wantErr string
+	}{
+		{
+			name: "codex accepts inherited effort",
+			cfg: ProjectConfig{
+				AgentConfig: AgentConfig{ModelEffort: ModelEffortMax},
+				Worker:      RoleOverride{Harness: HarnessCodex},
+			},
+		},
+		{
+			name: "claude code rejects inherited minimal effort",
+			cfg: ProjectConfig{
+				AgentConfig: AgentConfig{ModelEffort: ModelEffortMinimal},
+				Worker:      RoleOverride{Harness: HarnessClaudeCode},
+			},
+			wantErr: `worker.modelEffort "minimal" is not supported for harness "claude-code"`,
+		},
+		{
+			name: "agy rejects inherited effort",
+			cfg: ProjectConfig{
+				AgentConfig: AgentConfig{ModelEffort: ModelEffortHigh},
+				Worker:      RoleOverride{Harness: HarnessAgy},
+			},
+			wantErr: `worker.modelEffort "high" is not supported for harness "agy"`,
+		},
+		{
+			name: "agy rejects role effort",
+			cfg: ProjectConfig{
+				Worker: RoleOverride{
+					Harness:     HarnessAgy,
+					AgentConfig: AgentConfig{ModelEffort: ModelEffortLow},
+				},
+			},
+			wantErr: `worker.modelEffort "low" is not supported for harness "agy"`,
+		},
+		{
+			name: "role effort overrides inherited effort",
+			cfg: ProjectConfig{
+				AgentConfig: AgentConfig{ModelEffort: ModelEffortMinimal},
+				Worker: RoleOverride{
+					Harness:     HarnessClaudeCode,
+					AgentConfig: AgentConfig{ModelEffort: ModelEffortHigh},
+				},
+			},
+		},
+		{
+			name: "role without harness defers compatibility",
+			cfg: ProjectConfig{
+				AgentConfig: AgentConfig{ModelEffort: ModelEffortMinimal},
+				Worker: RoleOverride{
+					AgentConfig: AgentConfig{ModelEffort: ModelEffortMax},
+				},
+			},
+		},
+		{
+			name: "orchestrator error keeps role prefix",
+			cfg: ProjectConfig{
+				Orchestrator: RoleOverride{
+					Harness:     HarnessOpenCode,
+					AgentConfig: AgentConfig{ModelEffort: ModelEffortMedium},
+				},
+			},
+			wantErr: `orchestrator.modelEffort "medium" is not supported for harness "opencode"`,
+		},
+		{
+			name: "role vocabulary error keeps existing prefix",
+			cfg: ProjectConfig{
+				Worker: RoleOverride{AgentConfig: AgentConfig{ModelEffort: "extreme"}},
+			},
+			wantErr: `worker.invalid modelEffort "extreme": want one of minimal, low, medium, high, extra-high, max`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.cfg.Validate()
+			if tt.wantErr == "" {
+				if err != nil {
+					t.Fatalf("Validate() error = %v", err)
+				}
+				return
+			}
+			if err == nil || err.Error() != tt.wantErr {
+				t.Fatalf("Validate() error = %v, want %q", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestProjectConfigValidateEmptyEffortForEveryHarness(t *testing.T) {
+	for _, harness := range AllHarnesses {
+		t.Run(string(harness), func(t *testing.T) {
+			cfg := ProjectConfig{Worker: RoleOverride{Harness: harness}}
+			if err := cfg.Validate(); err != nil {
+				t.Fatalf("Validate() error = %v", err)
+			}
+		})
+	}
+}
+
 func TestDefaultProjectConfig(t *testing.T) {
 	def := DefaultProjectConfig()
 

@@ -133,6 +133,12 @@ func (c ProjectConfig) Validate() error {
 		if err := ro.AgentConfig.Validate(); err != nil {
 			return fmt.Errorf("%s.%w", role, err)
 		}
+		if ro.Harness != "" {
+			effective := mergeAgentConfig(c.AgentConfig, ro.AgentConfig)
+			if err := effective.ValidateForHarness(ro.Harness); err != nil {
+				return fmt.Errorf("%s.%w", role, err)
+			}
+		}
 	}
 	for _, s := range c.Symlinks {
 		if err := validateRepoRelative(s); err != nil {
@@ -151,6 +157,21 @@ func (c ProjectConfig) Validate() error {
 		return err
 	}
 	return nil
+}
+
+// mergeAgentConfig overlays non-empty role settings onto the project defaults.
+// It mirrors the effective configuration used when a session is launched.
+func mergeAgentConfig(base, override AgentConfig) AgentConfig {
+	if override.Model != "" {
+		base.Model = override.Model
+	}
+	if override.ModelEffort != "" {
+		base.ModelEffort = override.ModelEffort
+	}
+	if override.Permissions != "" {
+		base.Permissions = override.Permissions
+	}
+	return base
 }
 
 func validateNoWhitespaceField(name, value string) error {

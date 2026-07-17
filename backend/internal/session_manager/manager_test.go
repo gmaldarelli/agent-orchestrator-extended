@@ -1648,6 +1648,32 @@ func TestRestore_PrefersPersistedSessionModelEffort(t *testing.T) {
 	}
 }
 
+func TestRestore_RejectsPersistedModelEffortUnsupportedByHarness(t *testing.T) {
+	st := newFakeStore()
+	st.projects["mer"] = domain.ProjectRecord{ID: "mer", Config: domain.ProjectConfig{}}
+	seedTerminal(st, "mer-1", domain.SessionMetadata{
+		WorkspacePath:  "/ws/mer-1",
+		Branch:         "b",
+		AgentSessionID: "agent-x",
+		ModelEffort:    domain.ModelEffortHigh,
+	})
+	rec := st.sessions["mer-1"]
+	rec.Harness = domain.HarnessAgy
+	st.sessions["mer-1"] = rec
+
+	runtime := &fakeRuntime{}
+	lookPath := func(string) (string, error) { return "/bin/true", nil }
+	m := New(Deps{Runtime: runtime, Agents: singleAgent{agent: &recordingAgent{}}, Workspace: &fakeWorkspace{}, Store: st, Messenger: &fakeMessenger{}, Lifecycle: &fakeLCM{store: st}, LookPath: lookPath})
+
+	_, err := m.Restore(ctx, "mer-1")
+	if err == nil || !strings.Contains(err.Error(), `restore mer-1: modelEffort "high" is not supported for harness "agy"`) {
+		t.Fatalf("Restore() error = %v, want unsupported persisted modelEffort", err)
+	}
+	if runtime.created != 0 {
+		t.Fatalf("runtime.Create calls = %d, want 0", runtime.created)
+	}
+}
+
 func TestRestore_RefusesLiveSession(t *testing.T) {
 	m, st, _, _ := newManager()
 	st.sessions["mer-1"] = mkLive("mer-1")
